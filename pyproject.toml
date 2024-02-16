@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "prpr-test"
+version = "0.1.0"
+description = ""
+authors = ["RuslanUC <dev_ruslan_uc@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "prpr_test"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.109.2"
+tortoise-orm = {extras = ["asyncmy"], version = "^0.20.0"}
+s3lite = "^0.1.2"
+bcrypt = "^4.1.2"
+uvicorn = "^0.27.1"
+httpx = "^0.26.0"
+aerich = "^0.7.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

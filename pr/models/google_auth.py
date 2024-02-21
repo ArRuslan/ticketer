@@ -1,3 +1,5 @@
+from time import time
+
 from tortoise import fields
 
 from pr import models
@@ -11,3 +13,6 @@ class GoogleAuth(Model):
     access_token: str = fields.TextField()
     refresh_token: str = fields.TextField()
     expires_at: int = fields.BigIntField()
+
+    def expired(self) -> bool:
+        return time() > self.expires_at

@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import time
 
 from aerich import Command
 from bcrypt import gensalt, hashpw, checkpw
@@ -8,10 +9,11 @@ from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
-from pr.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, OAUTH_GOOGLE_CLIENT_SECRET
+from pr.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, OAUTH_GOOGLE_CLIENT_SECRET, JWT_KEY
 from pr.exceptions import CustomBodyException
-from pr.models import User, AuthSession
+from pr.models import User, AuthSession, GoogleAuth
 from pr.schemas import LoginData, RegisterData
+from pr.utils.jwt import JWT
 from pr.utils.jwt_auth import jwt_auth
 from pr.utils.turnstile import Turnstile
 
@@ -86,8 +88,20 @@ async def google_auth_link():
     }
 
 
+@app.post("/auth/google/connect")
+async def google_auth_connect_link(user: User = Depends(jwt_auth)):
+    if await GoogleAuth.filter(user=user).exists():
+        raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
+
+    state = JWT.encode({"user_id": user.id, "type": "google-connect"}, JWT_KEY, expires_in=180)
+    return {
+        "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={OAUTH_GOOGLE_CLIENT_ID}"
+               f"&redirect_uri={OAUTH_GOOGLE_REDIRECT}&scope=profile%20email&access_type=offline&state={state}"
+    }
+
+
 @app.get("/auth/google/callback")
-async def google_auth_callback(code: str):
+async def google_auth_callback(code: str, state: str | None = None):
     data = {
         "code": code,
         "client_id": OAUTH_GOOGLE_CLIENT_ID,
@@ -99,21 +113,52 @@ async def google_auth_callback(code: str):
         resp = await client.post("https://accounts.google.com/o/oauth2/token", json=data)
         if "error" in resp.json():
             raise CustomBodyException(code=400, body={"error_message": f"Error: {resp.json()['error']}"})
-        # {'access_token': ..., 'expires_in': ..., 'refresh_token': ...}
-        token = resp.json()["access_token"]
+        token_data = resp.json()
 
         info_resp = await client.get("https://www.googleapis.com/oauth2/v1/userinfo",
-                                     headers={"Authorization": f"Bearer {token}"})
+                                     headers={"Authorization": f"Bearer {token_data['access_token']}"})
         data = info_resp.json()
+
+    if (auth := await GoogleAuth.get_or_none(email=data["email"]).select_related("user")) is not None:
+        await auth.update(
+            access_token=token_data["access_token"],
+            refresh_token=token_data["refresh_token"],
+            expires_at=int(time() + token_data["expires_in"]),
+        )
+        session = await AuthSession.create(user=auth.user)
+        return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp()), "connect": False}
+
+    if state is not None:
+        if (state := JWT.decode(state, JWT_KEY)) is None or state.get("type") != "google-connect":
+            raise CustomBodyException(code=400, body={"error_message": f"Invalid 'state'"})
+
+        user = await User.get(id=state["user_id"])
+        if await GoogleAuth.filter(user=user).exists():
+            raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
+
+        await GoogleAuth.create(
+            email=data["email"],
+            user=user,
+            access_token=token_data["access_token"],
+            refresh_token=token_data["refresh_token"],
+            expires_at=int(time() + token_data["expires_in"])
+        )
+        return {"token": None, "expires_at": 0, "connect": True}
 
     user, _ = await User.get_or_create(email=data["email"], defaults={
         "first_name": data["given_name"],
         "last_name": data["family_name"],
     })
-    # google_auth, created = await GoogleAuth.get_or_create()
+    await GoogleAuth.create(
+        email=data["email"],
+        user=user,
+        access_token=token_data["access_token"],
+        refresh_token=token_data["refresh_token"],
+        expires_at=int(time() + token_data["expires_in"])
+    )
     session = await AuthSession.create(user=user)
 
-    return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
+    return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp()), "connect": False}
 
 
 @app.get("/users/self")

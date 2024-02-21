@@ -48,7 +48,9 @@ class JWT:
             return loads(payload)
 
     @staticmethod
-    def encode(payload: dict, secret: str | bytes, expire_timestamp: int | float = 0) -> str:
+    def encode(payload: dict, secret: str | bytes, expire_timestamp: int | float = 0, expires_in: int = None) -> str:
+        if expire_timestamp == 0 and expires_in is not None:
+            expire_timestamp = int(time() + expires_in)
         header = {
             "alg": "HS512",
             "typ": "JWT",

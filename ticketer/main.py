@@ -10,7 +10,7 @@ from tortoise.contrib.fastapi import register_tortoise
 
 from ticketer.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
 from ticketer.exceptions import CustomBodyException
-from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod
+from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData
 from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
@@ -223,3 +223,32 @@ async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jw
 async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)):
     await PaymentMethod.filter(user=user, card_number=card_number).delete()
 
+
+@app.get("/events")
+async def get_events(page: int = 1, with_plans: bool = False):
+    events = await Event.filter().limit(10).offset((page-1) * 10).select_related("location")
+
+    result = []
+    for event in events:
+        result.append({
+            "id": event.id,
+            "name": event.name,
+            "description": event.description,
+            "start_time": event.start_time,
+            "end_time": event.end_time,
+            "location": {
+                "name": event.location.name,
+                "longitude": event.location.longitude,
+                "latitude": event.location.latitude,
+            },
+        })
+        if with_plans:
+            plans = await event.plans.all()
+            result[-1]["plans"] = [{
+                "id": plan.id,
+                "name": plan.name,
+                "price": plan.price,
+                "max_tickets": plan.max_tickets,
+            } for plan in plans]
+
+    return result

@@ -4,3 +4,4 @@ from .external_auth import ExternalAuth
 from .location import Location
 from .event import Event
 from .payment_method import PaymentMethod
+from .event_plan import EventPlan

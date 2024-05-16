@@ -1,9 +1,9 @@
 from fastapi import Request
 
-from pr.config import JWT_KEY
-from pr.exceptions import UnauthorizedException
-from pr.models.session import AuthSession
-from pr.utils.jwt import JWT
+from ticketer.config import JWT_KEY
+from ticketer.exceptions import UnauthorizedException
+from ticketer.models.session import AuthSession
+from ticketer.utils.jwt import JWT
 
 
 async def jwt_auth(request: Request):

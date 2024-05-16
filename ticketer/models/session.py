@@ -4,10 +4,10 @@ from os import urandom
 
 from tortoise import fields
 
-from pr import models
-from pr.config import JWT_KEY
-from pr.models._utils import Model
-from pr.utils.jwt import JWT
+from ticketer import models
+from ticketer.config import JWT_KEY
+from ticketer.models._utils import Model
+from ticketer.utils.jwt import JWT
 
 
 def gen_token():

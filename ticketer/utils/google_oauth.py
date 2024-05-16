@@ -2,8 +2,8 @@ from typing import TypedDict
 
 from httpx import AsyncClient
 
-from pr import config
-from pr.exceptions import CustomBodyException
+from ticketer import config
+from ticketer.exceptions import CustomBodyException
 
 
 class GoogleOAuthResponse(TypedDict):

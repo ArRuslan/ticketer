@@ -1,6 +1,6 @@
 from tortoise import fields
 
-from pr.models._utils import Model
+from ticketer.models._utils import Model
 
 
 class User(Model):

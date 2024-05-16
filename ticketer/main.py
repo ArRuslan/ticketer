@@ -8,14 +8,14 @@ from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
-from pr.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
-from pr.exceptions import CustomBodyException
-from pr.models import User, AuthSession, ExternalAuth, PaymentMethod
-from pr.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData
-from pr.utils.google_oauth import authorize_google
-from pr.utils.jwt import JWT
-from pr.utils.jwt_auth import jwt_auth
-from pr.utils.turnstile import Turnstile
+from ticketer.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
+from ticketer.exceptions import CustomBodyException
+from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod
+from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData
+from ticketer.utils.google_oauth import authorize_google
+from ticketer.utils.jwt import JWT
+from ticketer.utils.jwt_auth import jwt_auth
+from ticketer.utils.turnstile import Turnstile
 
 app = FastAPI()
 

@@ -4,8 +4,8 @@ from datetime import datetime
 
 from tortoise import fields
 
-from pr import models
-from pr.models._utils import Model
+from ticketer import models
+from ticketer.models._utils import Model
 
 
 class Event(Model):

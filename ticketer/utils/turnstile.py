@@ -1,6 +1,6 @@
 from httpx import AsyncClient
 
-from pr.config import TURNSTILE_SECRET
+from ticketer.config import TURNSTILE_SECRET
 
 
 class Turnstile:

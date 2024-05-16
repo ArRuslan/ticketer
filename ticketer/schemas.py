@@ -27,3 +27,9 @@ class EditProfileData(BaseModel):
     new_password: str | None = None
     phone_number: int | None = None
 
+
+class AddPaymentMethodData(BaseModel):
+    type: str
+    card_number: str
+    expiration_date: str
+

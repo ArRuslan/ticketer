@@ -11,7 +11,8 @@ from tortoise.contrib.fastapi import register_tortoise
 from ticketer.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
 from ticketer.exceptions import CustomBodyException
 from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod
-from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData
+from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData
+from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
@@ -190,7 +191,7 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
 
 
 @app.get("/users/me/billing")
-async def get_user_info(user: User = Depends(jwt_auth)):
+async def get_payment_methods(user: User = Depends(jwt_auth)):
     payment_methods = await PaymentMethod.filter(user=user)
 
     return [{
@@ -199,4 +200,26 @@ async def get_user_info(user: User = Depends(jwt_auth)):
         "expiration_date": method.expiration_date,
         "expired": method.expired(),
     } for method in payment_methods]
+
+
+@app.post("/users/me/billing")
+async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jwt_auth)):
+    if not is_valid_card(data.card_number, data.expiration_date):
+        raise CustomBodyException(code=400, body={"error_message": f"Card details you provided are invalid."})
+
+    await PaymentMethod.get_or_create(user=user, card_number=data.card_number, defaults={
+        "expiration_date": data.expiration_date,
+    })
+
+    return {
+        "type": data.type,
+        "card_number": data.card_number,
+        "expiration_date": data.expiration_date,
+        "expired": False,
+    }
+
+
+@app.delete("/users/me/billing/{card_number}", status_code=204)
+async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)):
+    await PaymentMethod.filter(user=user, card_number=card_number).delete()
 

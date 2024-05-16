@@ -4,15 +4,15 @@ from time import time
 from aerich import Command
 from bcrypt import gensalt, hashpw, checkpw
 from fastapi import FastAPI, Request, Depends
-from httpx import AsyncClient
 from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
-from pr.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, OAUTH_GOOGLE_CLIENT_SECRET, JWT_KEY
+from pr.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
 from pr.exceptions import CustomBodyException
-from pr.models import User, AuthSession, GoogleAuth
-from pr.schemas import LoginData, RegisterData
+from pr.models import User, AuthSession, ExternalAuth, PaymentMethod
+from pr.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData
+from pr.utils.google_oauth import authorize_google
 from pr.utils.jwt import JWT
 from pr.utils.jwt_auth import jwt_auth
 from pr.utils.turnstile import Turnstile
@@ -90,7 +90,7 @@ async def google_auth_link():
 
 @app.post("/auth/google/connect")
 async def google_auth_connect_link(user: User = Depends(jwt_auth)):
-    if await GoogleAuth.filter(user=user).exists():
+    if await ExternalAuth.filter(user=user).exists():
         raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
 
     state = JWT.encode({"user_id": user.id, "type": "google-connect"}, JWT_KEY, expires_in=180)
@@ -100,72 +100,103 @@ async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     }
 
 
-@app.get("/auth/google/callback")
-async def google_auth_callback(code: str, state: str | None = None):
-    data = {
-        "code": code,
-        "client_id": OAUTH_GOOGLE_CLIENT_ID,
-        "client_secret": OAUTH_GOOGLE_CLIENT_SECRET,
-        "redirect_uri": OAUTH_GOOGLE_REDIRECT,
-        "grant_type": "authorization_code",
-    }
-    async with AsyncClient() as client:
-        resp = await client.post("https://accounts.google.com/o/oauth2/token", json=data)
-        if "error" in resp.json():
-            raise CustomBodyException(code=400, body={"error_message": f"Error: {resp.json()['error']}"})
-        token_data = resp.json()
+@app.post("/auth/google/callback")
+async def google_auth_callback(data: GoogleOAuthData):
+    state = JWT.decode(data.state or "", JWT_KEY)
+    if state.get("type") != "google-connect":
+        state = None
 
-        info_resp = await client.get("https://www.googleapis.com/oauth2/v1/userinfo",
-                                     headers={"Authorization": f"Bearer {token_data['access_token']}"})
-        data = info_resp.json()
-
-    if (auth := await GoogleAuth.get_or_none(email=data["email"]).select_related("user")) is not None:
-        await auth.update(
+    data, token_data = await authorize_google(data.code)
+    eauth = await ExternalAuth.get_or_none(service="google", service_id=data["id"]).select_related("user")
+    if eauth is not None:
+        await eauth.update(
             access_token=token_data["access_token"],
             refresh_token=token_data["refresh_token"],
             expires_at=int(time() + token_data["expires_in"]),
         )
-        session = await AuthSession.create(user=auth.user)
-        return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp()), "connect": False}
 
-    if state is not None:
-        if (state := JWT.decode(state, JWT_KEY)) is None or state.get("type") != "google-connect":
-            raise CustomBodyException(code=400, body={"error_message": f"Invalid 'state'"})
-
-        user = await User.get(id=state["user_id"])
-        if await GoogleAuth.filter(user=user).exists():
+    user = None
+    if state is not None and eauth is None:
+        # Connect external service to user account
+        if await ExternalAuth.filter(user__id=state["user_id"]).exists():
             raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
 
-        await GoogleAuth.create(
-            email=data["email"],
+        await ExternalAuth.create(
             user=user,
+            service="google",
+            service_id=data["id"],
             access_token=token_data["access_token"],
             refresh_token=token_data["refresh_token"],
-            expires_at=int(time() + token_data["expires_in"])
+            expires_at=int(time() + token_data["expires_in"]),
         )
+    elif state is not None and eauth is not None:
+        # Trying to connect external account that is already connected, ERROR!!
+        raise CustomBodyException(code=400, body={"error_message": "This account is already connected."})
+    elif state is None and eauth is None:
+        # Register new user
+        user = await User.create(first_name=data["given_name"], last_name=data["family_name"])
+        await ExternalAuth.create(
+            user=user,
+            service="google",
+            service_id=data["id"],
+            access_token=token_data["access_token"],
+            refresh_token=token_data["refresh_token"],
+            expires_at=int(time() + token_data["expires_in"]),
+        )
+    elif state is None and eauth is not None:
+        # Authorize user
+        user = eauth.user
+    else:
+        raise Exception("Unreachable")
+
+    if user is None:
         return {"token": None, "expires_at": 0, "connect": True}
-
-    user, _ = await User.get_or_create(email=data["email"], defaults={
-        "first_name": data["given_name"],
-        "last_name": data["family_name"],
-    })
-    await GoogleAuth.create(
-        email=data["email"],
-        user=user,
-        access_token=token_data["access_token"],
-        refresh_token=token_data["refresh_token"],
-        expires_at=int(time() + token_data["expires_in"])
-    )
-    session = await AuthSession.create(user=user)
-
-    return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp()), "connect": False}
+    else:
+        session = await AuthSession.create(user=user)
+        return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp()), "connect": False}
 
 
-@app.get("/users/self")
+@app.get("/users/me")
 async def get_user_info(user: User = Depends(jwt_auth)):
     return {
         "id": user.id,
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
+        "phone_number": user.phone_number,
+        "mfa_enabled": user.mfa_key is not None,
     }
+
+
+@app.patch("/users/me")
+async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
+    require_password = data.mfa_key is not None or data.new_password is not None or data.email is not None \
+        or data.phone_number is not None
+    if require_password and not data.password:
+        raise CustomBodyException(code=400, body={"error_message": "You need to enter your password."})
+    elif require_password and data.password:
+        if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
+            raise CustomBodyException(code=400, body={"error_message": f"Wrong password!"})
+
+    # TODO: mfa
+    j_data = data.model_dump(exclude_defaults=True, exclude={"mfa_key", "password", "new_password"})
+    if data.new_password is not None:
+        j_data["password"] = hashpw(data.new_password.encode("utf8"), gensalt()).decode()
+
+    if j_data:
+        await user.update(**j_data)
+
+    return get_user_info(user)
+
+
+@app.get("/users/me/billing")
+async def get_user_info(user: User = Depends(jwt_auth)):
+    payment_methods = await PaymentMethod.filter(user=user)
+
+    return [{
+        "type": method.type,
+        "card_number": method.card_number,
+        "expiration_date": method.expiration_date,
+        "expired": method.expired(),
+    } for method in payment_methods]
+

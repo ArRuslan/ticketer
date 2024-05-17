@@ -14,7 +14,7 @@ Ticketer is a platform for buying tickets for events.
 - ...
 
 
-## Deployment (docker deployment is not ready yet)
+## Deployment
 
 To deploy this project, all you need is docker with docker-compose plugin installed
 Firstly, set environment variables and some variables in config.py.

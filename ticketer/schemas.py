@@ -33,3 +33,11 @@ class AddPaymentMethodData(BaseModel):
     card_number: str
     expiration_date: str
 
+
+class BuyTicketData(BaseModel):
+    event_id: int
+    plan_id: int
+    card_number: str
+    amount: int = 1
+    mfa_code: str | None = None
+

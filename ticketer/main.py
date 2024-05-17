@@ -1,3 +1,4 @@
+from datetime import timedelta, datetime
 from pathlib import Path
 from time import time
 
@@ -10,8 +11,9 @@ from tortoise.contrib.fastapi import register_tortoise
 
 from ticketer import config
 from ticketer.exceptions import CustomBodyException
-from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event
-from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData
+from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket
+from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData, \
+    BuyTicketData
 from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
@@ -172,7 +174,7 @@ async def get_user_info(user: User = Depends(jwt_auth)):
 @app.patch("/users/me")
 async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     require_password = data.mfa_key is not None or data.new_password is not None or data.email is not None \
-        or data.phone_number is not None
+                       or data.phone_number is not None
     if require_password and not data.password:
         raise CustomBodyException(code=400, body={"error_message": "You need to enter your password."})
     elif require_password and data.password:
@@ -227,7 +229,7 @@ async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)
 
 @app.get("/events")
 async def get_events(page: int = 1, with_plans: bool = False):
-    events = await Event.filter().limit(10).offset((page-1) * 10).select_related("location")
+    events = await Event.filter().limit(10).offset((page - 1) * 10).select_related("location")
 
     result = []
     for event in events:
@@ -235,8 +237,8 @@ async def get_events(page: int = 1, with_plans: bool = False):
             "id": event.id,
             "name": event.name,
             "description": event.description,
-            "start_time": event.start_time,
-            "end_time": event.end_time,
+            "start_time": int(event.start_time.timestamp()),
+            "end_time": int(event.end_time.timestamp()),
             "location": {
                 "name": event.location.name,
                 "longitude": event.location.longitude,
@@ -253,3 +255,44 @@ async def get_events(page: int = 1, with_plans: bool = False):
             } for plan in plans]
 
     return result
+
+
+@app.get("/tickets")
+async def get_user_tickets(user: User = Depends(jwt_auth)):
+    # TODO: filter by start/end times (not-started, started, ended)
+    tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")
+
+    return [{
+        "id": ticket.id,
+        "amount": ticket.amount,
+        "plan": {
+            "name": ticket.event_plan.name,
+            "price": ticket.event_plan.price,
+        },
+        "event": {
+            "id": ticket.event_plan.event.id,
+            "name": ticket.event_plan.event.name,
+            "description": ticket.event_plan.event.description,
+            "start_time": int(ticket.event_plan.event.start_time.timestamp()),
+            "end_time": int(ticket.event_plan.event.end_time.timestamp()),
+        },
+        "can_be_cancelled": (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3)
+    } for ticket in tickets]
+
+
+@app.post("/tickets")
+async def buy_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
+    # TODO: implement
+    raise NotImplementedError
+
+
+@app.delete("/tickets/{ticket_id}", status_code=204)
+async def get_user_tickets(ticket_id: int, user: User = Depends(jwt_auth)):
+    ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan__event")
+    if ticket is None:
+        raise CustomBodyException(code=404, body={"error_message": f"Unknown ticket."})
+
+    if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3):
+        raise CustomBodyException(code=404, body={"error_message": f"This ticket cannot be cancelled."})
+
+    await ticket.delete()

@@ -10,7 +10,7 @@ from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
 from ticketer import config
-from ticketer.exceptions import CustomBodyException
+from ticketer.exceptions import CustomBodyException, BadRequestException, NotFoundException
 from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData, \
     BuyTicketData
@@ -18,6 +18,7 @@ from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
+from ticketer.utils.mfa import MFA
 from ticketer.utils.turnstile import Turnstile
 
 app = FastAPI()
@@ -56,9 +57,9 @@ async def custom_exception_handler(request: Request, exc: CustomBodyException):
 @app.post("/auth/register")
 async def register(data: RegisterData):
     if not await Turnstile.verify(data.captcha_key):
-        raise CustomBodyException(code=400, body={"error_message": f"Failed to verify captcha!"})
+        raise BadRequestException("Failed to verify captcha!")
     if await User.filter(email=data.email).exists():
-        raise CustomBodyException(code=400, body={"error_message": f"User with this email already exists!"})
+        raise BadRequestException("User with this email already exists!")
 
     password_hash = hashpw(data.password.encode("utf8"), gensalt()).decode()
     user = await User.create(
@@ -72,12 +73,17 @@ async def register(data: RegisterData):
 @app.post("/auth/login")
 async def login(data: LoginData):
     if not await Turnstile.verify(data.captcha_key):
-        raise CustomBodyException(code=400, body={"error_message": f"Failed to verify captcha!"})
+        raise BadRequestException("Failed to verify captcha!")
     if (user := await User.get_or_none(email=data.email)) is None:
-        raise CustomBodyException(code=400, body={"error_message": f"Wrong email or password!"})
+        raise BadRequestException("Wrong email or password!")
 
     if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
-        raise CustomBodyException(code=400, body={"error_message": f"Wrong email or password!"})
+        raise BadRequestException("Wrong email or password!")
+
+    if user.mfa_key is not None:
+        mfa = MFA(user.mfa_key)
+        if data.mfa_code not in mfa.getCodes():
+            raise BadRequestException("Invalid two-factory authentication code.")
 
     session = await AuthSession.create(user=user)
     return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
@@ -94,7 +100,7 @@ async def google_auth_link():
 @app.post("/auth/google/connect")
 async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     if await ExternalAuth.filter(user=user).exists():
-        raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
+        raise BadRequestException("You already have connected google account.")
 
     state = JWT.encode({"user_id": user.id, "type": "google-connect"}, config.JWT_KEY, expires_in=180)
     return {
@@ -122,7 +128,7 @@ async def google_auth_callback(data: GoogleOAuthData):
     if state is not None and eauth is None:
         # Connect external service to user account
         if await ExternalAuth.filter(user__id=state["user_id"]).exists():
-            raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
+            raise BadRequestException("You already have connected google account.")
 
         await ExternalAuth.create(
             user=user,
@@ -134,7 +140,7 @@ async def google_auth_callback(data: GoogleOAuthData):
         )
     elif state is not None and eauth is not None:
         # Trying to connect external account that is already connected, ERROR!!
-        raise CustomBodyException(code=400, body={"error_message": "This account is already connected."})
+        raise BadRequestException("This account is already connected.")
     elif state is None and eauth is None:
         # Register new user
         user = await User.create(first_name=data["given_name"], last_name=data["family_name"])
@@ -175,15 +181,30 @@ async def get_user_info(user: User = Depends(jwt_auth)):
 async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     require_password = data.mfa_key is not None or data.new_password is not None or data.email is not None \
                        or data.phone_number is not None
+    if data.mfa_key and user.mfa_key is not None:
+        raise BadRequestException("Two-factory authentication is already enabled.")
+    elif data.mfa_key is None and user.mfa_key is None:
+        raise BadRequestException("Two-factory authentication is already disabled.")
+
     if require_password and not data.password:
-        raise CustomBodyException(code=400, body={"error_message": "You need to enter your password."})
+        raise BadRequestException("You need to enter your password.")
     elif require_password and data.password:
         if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
-            raise CustomBodyException(code=400, body={"error_message": f"Wrong password!"})
+            raise BadRequestException("Wrong password.")
 
-    # TODO: mfa
+    if data.mfa_key:
+        mfa = MFA(data.mfa_key)
+        if not mfa.valid:
+            raise BadRequestException("Invalid two-factory authentication key.")
+        if data.mfa_code not in mfa.getCodes():
+            raise BadRequestException("Invalid two-factory authentication code.")
+    elif data.mfa_key is None and user.mfa_key is not None:
+        mfa = MFA(user.mfa_key)
+        if data.mfa_code not in mfa.getCodes():
+            raise BadRequestException("Invalid two-factory authentication code.")
+
     # TODO: check if phone number is already used
-    j_data = data.model_dump(exclude_defaults=True, exclude={"mfa_key", "password", "new_password"})
+    j_data = data.model_dump(exclude_defaults=True, exclude={"password", "new_password"})
     if data.new_password is not None:
         j_data["password"] = hashpw(data.new_password.encode("utf8"), gensalt()).decode()
 
@@ -208,7 +229,7 @@ async def get_payment_methods(user: User = Depends(jwt_auth)):
 @app.post("/users/me/payment")
 async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jwt_auth)):
     if not is_valid_card(data.card_number, data.expiration_date):
-        raise CustomBodyException(code=400, body={"error_message": f"Card details you provided are invalid."})
+        raise BadRequestException("Card details you provided are invalid.")
 
     await PaymentMethod.get_or_create(user=user, type=data.type, card_number=data.card_number, defaults={
         "expiration_date": data.expiration_date,
@@ -290,9 +311,9 @@ async def buy_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
 async def get_user_tickets(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan__event")
     if ticket is None:
-        raise CustomBodyException(code=404, body={"error_message": f"Unknown ticket."})
+        raise NotFoundException("Unknown ticket.")
 
     if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3):
-        raise CustomBodyException(code=404, body={"error_message": f"This ticket cannot be cancelled."})
+        raise BadRequestException("This ticket cannot be cancelled.")
 
     await ticket.delete()

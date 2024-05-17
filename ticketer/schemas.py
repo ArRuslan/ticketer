@@ -1,13 +1,17 @@
 from pydantic import BaseModel, EmailStr
 
 
-class LoginData(BaseModel):
+class BaseAuthData(BaseModel):
     email: EmailStr
     password: str
     captcha_key: str | None = None
 
 
-class RegisterData(LoginData):
+class LoginData(BaseAuthData):
+    mfa_code: str | None = None
+
+
+class RegisterData(BaseAuthData):
     first_name: str
     last_name: str
 

@@ -1,6 +1,6 @@
 from httpx import AsyncClient
 
-from ticketer.config import TURNSTILE_SECRET
+from ticketer import config
 
 
 class Turnstile:
@@ -9,5 +9,5 @@ class Turnstile:
     @classmethod
     async def verify(cls, key: str) -> bool:
         async with AsyncClient() as client:
-            resp = await client.post(cls.URL, content=f"secret={TURNSTILE_SECRET}&response={key}")
+            resp = await client.post(cls.URL, json={"secret": config.TURNSTILE_SECRET, "response": key})
             return resp.json()["success"]

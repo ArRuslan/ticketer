@@ -1,0 +1,45 @@
+name: PyTest
+on:
+  pull_request:
+    types: [opened]
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Run tests
+        run: |
+          poetry run pytest -x --disable-warnings tests/
+        env:
+          JWT_KEY: ${{ secrets.JWT_KEY }}
+          OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+          OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+
+      - name: Print coverage report
+        run: |
+          poetry run coverage report
+
+      #- name: Upload coverage reports to Codecov
+      #  uses: codecov/codecov-action@v3
+      #  with:
+      #    token: ${{ secrets.CODECOV_TOKEN }}

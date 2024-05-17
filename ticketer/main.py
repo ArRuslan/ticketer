@@ -8,7 +8,7 @@ from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
-from ticketer.config import OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_REDIRECT, JWT_KEY
+from ticketer import config
 from ticketer.exceptions import CustomBodyException
 from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData
@@ -22,12 +22,12 @@ app = FastAPI()
 
 
 @app.on_event("startup")
-async def migrate_orm():
+async def migrate_orm():  # pragma: no cover
     migrations_dir = "data/migrations"
 
     command = Command({
-        "connections": {"default": "sqlite://pr.db"},
-        "apps": {"models": {"models": ["pr.models", "aerich.models"], "default_connection": "default"}},
+        "connections": {"default": config.DB_CONNECTION_STRING},
+        "apps": {"models": {"models": ["ticketer.models", "aerich.models"], "default_connection": "default"}},
     }, location=migrations_dir)
     await command.init()
     if Path(migrations_dir).exists():
@@ -40,8 +40,8 @@ async def migrate_orm():
 
 register_tortoise(
     app,
-    db_url="sqlite://pr.db",
-    modules={"models": ["pr.models"]},
+    db_url=config.DB_CONNECTION_STRING,
+    modules={"models": ["ticketer.models"]},
     generate_schemas=True,
 )
 
@@ -84,8 +84,8 @@ async def login(data: LoginData):
 @app.get("/auth/google")
 async def google_auth_link():
     return {
-        "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={OAUTH_GOOGLE_CLIENT_ID}"
-               f"&redirect_uri={OAUTH_GOOGLE_REDIRECT}&scope=profile%20email&access_type=offline"
+        "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={config.OAUTH_GOOGLE_CLIENT_ID}"
+               f"&redirect_uri={config.OAUTH_GOOGLE_REDIRECT}&scope=profile%20email&access_type=offline"
     }
 
 
@@ -94,16 +94,16 @@ async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     if await ExternalAuth.filter(user=user).exists():
         raise CustomBodyException(code=400, body={"error_message": "You already have connected google account."})
 
-    state = JWT.encode({"user_id": user.id, "type": "google-connect"}, JWT_KEY, expires_in=180)
+    state = JWT.encode({"user_id": user.id, "type": "google-connect"}, config.JWT_KEY, expires_in=180)
     return {
-        "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={OAUTH_GOOGLE_CLIENT_ID}"
-               f"&redirect_uri={OAUTH_GOOGLE_REDIRECT}&scope=profile%20email&access_type=offline&state={state}"
+        "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={config.OAUTH_GOOGLE_CLIENT_ID}"
+               f"&redirect_uri={config.OAUTH_GOOGLE_REDIRECT}&scope=profile%20email&access_type=offline&state={state}"
     }
 
 
 @app.post("/auth/google/callback")
 async def google_auth_callback(data: GoogleOAuthData):
-    state = JWT.decode(data.state or "", JWT_KEY)
+    state = JWT.decode(data.state or "", config.JWT_KEY)
     if state.get("type") != "google-connect":
         state = None
 
@@ -180,6 +180,7 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
             raise CustomBodyException(code=400, body={"error_message": f"Wrong password!"})
 
     # TODO: mfa
+    # TODO: check if phone number is already used
     j_data = data.model_dump(exclude_defaults=True, exclude={"mfa_key", "password", "new_password"})
     if data.new_password is not None:
         j_data["password"] = hashpw(data.new_password.encode("utf8"), gensalt()).decode()
@@ -187,10 +188,10 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     if j_data:
         await user.update(**j_data)
 
-    return get_user_info(user)
+    return await get_user_info(user)
 
 
-@app.get("/users/me/billing")
+@app.get("/users/me/payment")
 async def get_payment_methods(user: User = Depends(jwt_auth)):
     payment_methods = await PaymentMethod.filter(user=user)
 
@@ -202,12 +203,12 @@ async def get_payment_methods(user: User = Depends(jwt_auth)):
     } for method in payment_methods]
 
 
-@app.post("/users/me/billing")
+@app.post("/users/me/payment")
 async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jwt_auth)):
     if not is_valid_card(data.card_number, data.expiration_date):
         raise CustomBodyException(code=400, body={"error_message": f"Card details you provided are invalid."})
 
-    await PaymentMethod.get_or_create(user=user, card_number=data.card_number, defaults={
+    await PaymentMethod.get_or_create(user=user, type=data.type, card_number=data.card_number, defaults={
         "expiration_date": data.expiration_date,
     })
 
@@ -219,7 +220,7 @@ async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jw
     }
 
 
-@app.delete("/users/me/billing/{card_number}", status_code=204)
+@app.delete("/users/me/payment/{card_number}", status_code=204)
 async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)):
     await PaymentMethod.filter(user=user, card_number=card_number).delete()
 

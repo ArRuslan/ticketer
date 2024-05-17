@@ -18,6 +18,18 @@ aerich = "^0.7.2"
 pydantic = {extras = ["email"], version = "^2.7.1"}
 
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-cov = "^5.0.0"
+pytest-asyncio = "^0.23.6"
+asgi-lifespan = "^2.1.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov-report=xml --cov-append --cov=ticketer"
+
+[tool.coverage.run]
+data_file = "coverage.coverage"

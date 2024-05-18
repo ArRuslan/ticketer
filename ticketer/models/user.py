@@ -1,6 +1,14 @@
+from enum import IntEnum
+
 from tortoise import fields
 
 from ticketer.models._utils import Model
+
+
+class UserRole(IntEnum):
+    USER = 0
+    MANAGER = 1
+    ADMIN = 999
 
 
 class User(Model):
@@ -12,4 +20,5 @@ class User(Model):
     avatar_id: str | None = fields.CharField(max_length=255, null=True, default=None)  # ??
     phone_number: int | None = fields.BigIntField(unique=True, null=True, default=None)
     mfa_key: str | None = fields.CharField(max_length=64, null=True, default=None)
-    # ?? role: str = fields.CharField(max_length=32, default="user")  # user/manager/admin ?
+    banned: bool = fields.BooleanField(default=False)
+    role: int = fields.IntEnumField(UserRole, default=UserRole.USER)

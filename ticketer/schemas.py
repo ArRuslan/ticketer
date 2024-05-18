@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -45,3 +47,17 @@ class BuyTicketData(BaseModel):
     amount: int = 1
     mfa_code: str | None = None
 
+
+class EventSearchData(BaseModel):
+    name: str | None = None
+    category: str | None = None
+    time_min: int | None = None
+    time_max: int | None = None
+    city: str | None = None
+    #price_min: int | None = None
+    #price_max: int | None = None
+
+
+class AdminUserSearchData(BaseModel):
+    email: str | None = None
+    phone_number: int | None = None

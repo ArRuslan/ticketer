@@ -22,3 +22,8 @@ class NotFoundException(ErrorMessageException):
 class UnauthorizedException(ErrorMessageException):
     def __init__(self, message: str):
         super().__init__(401, message)
+
+
+class ForbiddenException(ErrorMessageException):
+    def __init__(self, message: str):
+        super().__init__(403, message)

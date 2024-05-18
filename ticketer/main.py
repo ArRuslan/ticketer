@@ -1,6 +1,7 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, UTC
 from pathlib import Path
 from time import time
+from typing import Literal
 
 from aerich import Command
 from bcrypt import gensalt, hashpw, checkpw
@@ -9,11 +10,11 @@ from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
 
-from ticketer import config
-from ticketer.exceptions import CustomBodyException, BadRequestException, NotFoundException
+from ticketer import config, admin
+from ticketer.exceptions import CustomBodyException, BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData, \
-    BuyTicketData
+    BuyTicketData, EventSearchData
 from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
@@ -22,7 +23,7 @@ from ticketer.utils.mfa import MFA
 from ticketer.utils.turnstile import Turnstile
 
 app = FastAPI()
-
+app.mount("/admin", admin.app)
 
 @app.on_event("startup")
 async def migrate_orm():  # pragma: no cover
@@ -76,6 +77,9 @@ async def login(data: LoginData):
         raise BadRequestException("Failed to verify captcha!")
     if (user := await User.get_or_none(email=data.email)) is None:
         raise BadRequestException("Wrong email or password!")
+
+    if user.banned:
+        raise ForbiddenException("Your account is banned!")
 
     if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
         raise BadRequestException("Wrong email or password!")
@@ -248,12 +252,32 @@ async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)
     await PaymentMethod.filter(user=user, card_number=card_number).delete()
 
 
-@app.get("/events")
-async def get_events(page: int = 1, with_plans: bool = False):
-    events = await Event.filter().limit(10).offset((page - 1) * 10).select_related("location")
+# TODO: add searching and sorting by price
+@app.post("/events/search")
+async def get_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
+                     sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
+                     with_plans: bool = False):
+    page = max(page, 1)
+    results_per_page = min(results_per_page, 50)
+    results_per_page = max(results_per_page, 5)
+
+    query_args = data.model_dump(exclude_defaults=True, exclude={"time_min", "time_max"})
+    if data.time_max:
+        query_args["start_time__lte"] = datetime.fromtimestamp(data.time_max, UTC)
+    if data.time_min:
+        query_args["start_time__gte"] = datetime.fromtimestamp(data.time_min, UTC)
+    if data.name:
+        del query_args["name"]
+        query_args["name__contains"] = data.name
+
+    events_query = Event.filter(**query_args).limit(results_per_page).offset((page - 1) * 10).select_related("location")
+    if sort_by is not None:
+        if sort_direction == "desc":
+            sort_by = f"-{sort_by}"
+        events_query = events_query.order_by(sort_by)
 
     result = []
-    for event in events:
+    for event in await events_query:
         result.append({
             "id": event.id,
             "name": event.name,
@@ -274,6 +298,34 @@ async def get_events(page: int = 1, with_plans: bool = False):
                 "price": plan.price,
                 "max_tickets": plan.max_tickets,
             } for plan in plans]
+
+    return result
+
+
+@app.get("/events/{event_id}")
+async def get_events(event_id: int, with_plans: bool = False):
+    event = await Event.get_or_none(id=event_id).select_related("location")
+
+    result = {
+            "id": event.id,
+            "name": event.name,
+            "description": event.description,
+            "start_time": int(event.start_time.timestamp()),
+            "end_time": int(event.end_time.timestamp()),
+            "location": {
+                "name": event.location.name,
+                "longitude": event.location.longitude,
+                "latitude": event.location.latitude,
+            },
+        }
+
+    if with_plans:
+        result["plans"] = [{
+            "id": plan.id,
+            "name": plan.name,
+            "price": plan.price,
+            "max_tickets": plan.max_tickets,
+        } for plan in await event.plans.all()]
 
     return result
 

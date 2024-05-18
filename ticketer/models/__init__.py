@@ -1,4 +1,4 @@
-from .user import User
+from .user import User, UserRole
 from .session import AuthSession
 from .external_auth import ExternalAuth
 from .location import Location

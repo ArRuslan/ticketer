@@ -1,9 +1,11 @@
+from datetime import datetime, UTC
+
 from fastapi import FastAPI, Request, Depends
 from starlette.responses import JSONResponse
 
-from ticketer.exceptions import CustomBodyException
-from ticketer.models import User, UserRole
-from ticketer.schemas import AdminUserSearchData
+from ticketer.exceptions import CustomBodyException, NotFoundException
+from ticketer.models import User, UserRole, Location, Event, EventPlan
+from ticketer.schemas import AdminUserSearchData, AddEventData
 from ticketer.utils.jwt_auth import jwt_auth_role
 
 app = FastAPI()
@@ -45,3 +47,30 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     await User.filter(id=user_id).update(banned=False)
 
+
+@app.post("/events")
+async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+    if (location := await Location.get_or_none(id=data.location_id)) is None:
+        raise NotFoundException("Unknown location.")
+
+    create_args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time", "image"})
+    create_args["location"] = location
+    create_args["start_time"] = datetime.fromtimestamp(data.start_time, UTC)
+    create_args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
+
+    event = await Event.create(**create_args)
+    for plan in data.plans:
+        await EventPlan.create(**plan.model_dump(), event=event)
+
+    return {
+        "id": event.id,
+        "name": event.name,
+        "description": event.description,
+        "start_time": int(event.start_time.timestamp()),
+        "end_time": int(event.end_time.timestamp()),
+        "location": {
+            "name": location.name,
+            "longitude": location.longitude,
+            "latitude": location.latitude,
+        },
+    }

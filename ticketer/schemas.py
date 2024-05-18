@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class BaseAuthData(BaseModel):
@@ -61,3 +61,20 @@ class EventSearchData(BaseModel):
 class AdminUserSearchData(BaseModel):
     email: str | None = None
     phone_number: int | None = None
+
+
+class EventPlanData(BaseModel):
+    name: str
+    price: float
+    max_tickets: int
+
+
+class AddEventData(BaseModel):
+    name: str
+    description: str
+    category: str
+    start_time: int
+    end_time: int
+    location_id: int
+    image: str | None = None  # TODO: validate image
+    plans: list[EventPlanData] = Field(min_length=1)

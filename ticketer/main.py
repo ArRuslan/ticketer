@@ -25,6 +25,7 @@ from ticketer.utils.turnstile import Turnstile
 app = FastAPI()
 app.mount("/admin", admin.app)
 
+
 @app.on_event("startup")
 async def migrate_orm():  # pragma: no cover
     migrations_dir = "data/migrations"

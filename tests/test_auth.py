@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from ticketer import config
+from ticketer.utils.mfa import MFA
 from .conftest import create_test_user
 
 
@@ -107,3 +108,26 @@ async def test_login_creds_fail(client: AsyncClient):
     })
     assert response.status_code == 400
     assert "Wrong" in response.json()["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_login_mfa(client: AsyncClient):
+    user = await create_test_user()
+    await user.update(mfa_key="A"*16)
+
+    response = await client.post("/auth/login", json={
+        "email": user.email,
+        "password": "123456789",
+        "captcha_key": "should-pass",
+    })
+    assert response.status_code == 400
+    assert "two-factor" in response.json()["error_message"]
+
+    mfa = MFA(user.mfa_key)
+    response = await client.post("/auth/login", json={
+        "email": user.email,
+        "password": "123456789",
+        "captcha_key": "should-pass",
+        "mfa_code": mfa.getCode(),
+    })
+    assert response.status_code == 200, response.json()

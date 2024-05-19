@@ -3,6 +3,7 @@ from time import time
 import pytest
 from httpx import AsyncClient
 
+from ticketer.utils.mfa import MFA
 from .conftest import create_test_user, create_session_token
 
 
@@ -123,3 +124,81 @@ async def test_add_invalid_payment_method(client: AsyncClient):
         "expiration_date": "12/99",
     })
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_enable_disable_mfa(client: AsyncClient):
+    user = await create_test_user()
+    token = await create_session_token(user)
+    mfa_key = "A"*16
+    mfa = MFA(mfa_key)
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": None,
+    })
+    assert response.status_code == 400
+    assert "disabled" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": mfa_key + "a",
+    })
+    assert response.status_code == 400
+    assert "authentication key" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": mfa_key,
+    })
+    assert response.status_code == 400
+    assert "authentication code" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": mfa_key,
+        "mfa_code": "00000",
+    })
+    assert response.status_code == 400
+    assert "authentication code" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": mfa_key,
+        "mfa_code": mfa.getCode(),
+    })
+    assert response.status_code == 200
+    assert response.json()["mfa_enabled"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": mfa_key,
+        "mfa_code": mfa.getCode(),
+    })
+    assert response.status_code == 400
+    assert "enabled" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": None,
+    })
+    assert response.status_code == 400
+    assert "authentication code" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": None,
+        "mfa_code": "00000",
+    })
+    assert response.status_code == 400
+    assert "authentication code" in response.json()["error_message"]
+
+    response = await client.patch("/users/me", headers={"Authorization": token}, json={
+        "password": "123456789",
+        "mfa_key": None,
+        "mfa_code": mfa.getCode(),
+    })
+    assert response.status_code == 200
+    assert not response.json()["mfa_enabled"]
+
+

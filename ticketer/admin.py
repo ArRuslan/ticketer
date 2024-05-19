@@ -1,5 +1,4 @@
-from datetime import datetime, UTC, timedelta
-from time import time
+from datetime import datetime, UTC
 
 from fastapi import FastAPI, Request, Depends
 from starlette.responses import JSONResponse
@@ -42,7 +41,7 @@ async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_
 @app.post("/users/{user_id}/ban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_ban := await User.get_or_none(id=user_id)) is None:
-        return
+        raise NotFoundException("Unknown user.")
     if user_to_ban.role >= user.role:
         raise ForbiddenException("You cannot ban this user.")
 
@@ -52,7 +51,7 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 @app.post("/users/{user_id}/unban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_unban := await User.get_or_none(id=user_id)) is None:
-        return
+        raise NotFoundException("Unknown user.")
     if user_to_unban.role >= user.role:
         raise ForbiddenException("You cannot unban this user.")
 

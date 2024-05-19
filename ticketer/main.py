@@ -90,7 +90,7 @@ async def login(data: LoginData):
     if user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factory authentication code.")
+            raise BadRequestException("Invalid two-factor authentication code.")
 
     session = await AuthSession.create(user=user)
     return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
@@ -202,13 +202,13 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     if data.mfa_key:
         mfa = MFA(data.mfa_key)
         if not mfa.valid:
-            raise BadRequestException("Invalid two-factory authentication key.")
+            raise BadRequestException("Invalid two-factor authentication key.")
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factory authentication code.")
+            raise BadRequestException("Invalid two-factor authentication code.")
     elif data.mfa_key is None and user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factory authentication code.")
+            raise BadRequestException("Invalid two-factor authentication code.")
 
     # TODO: check if phone number is already used
     j_data = data.model_dump(exclude_defaults=True, exclude={"password", "new_password"})

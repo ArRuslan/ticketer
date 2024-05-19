@@ -70,13 +70,29 @@ async def test_ban_unban_user(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_ban_admin(client: AsyncClient):
+async def test_ban_unban_admin(client: AsyncClient):
     user = await create_test_user(role=UserRole.ADMIN)
     token = await create_session_token(user)
 
     response = await client.post(f"/admin/users/{user.id}/ban", headers={"Authorization": token})
     assert response.status_code == 403
     assert "cannot" in response.json()["error_message"]
+
+    response = await client.post(f"/admin/users/{user.id}/unban", headers={"Authorization": token})
+    assert response.status_code == 403
+    assert "cannot" in response.json()["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_ban_unban_nonexistent_user(client: AsyncClient):
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+
+    response = await client.post(f"/admin/users/{user.id+1000}/ban", headers={"Authorization": token})
+    assert response.status_code == 404
+
+    response = await client.post(f"/admin/users/{user.id+1000}/unban", headers={"Authorization": token})
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -111,6 +127,26 @@ async def test_create_event(client: AsyncClient):
             "latitude": location.latitude,
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_create_event_fail_unknown_location(client: AsyncClient):
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+
+    start_time = int(time()+123)
+    response = await client.post("/admin/events", headers={"Authorization": token}, json={
+        "name": "Test Event",
+        "description": "This is test event",
+        "category": "concert",
+        "start_time": start_time,
+        "end_time": start_time+60,
+        "location_id": 123456,
+        "image": None,
+        "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
+    })
+    assert response.status_code == 404
+    assert "location" in response.json()["error_message"]
 
 
 @pytest.mark.asyncio

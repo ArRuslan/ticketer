@@ -28,6 +28,8 @@ app.mount("/admin", admin.app)
 
 @app.on_event("startup")
 async def migrate_orm():  # pragma: no cover
+    if config.DB_CONNECTION_STRING == "sqlite://:memory:":
+        return
     migrations_dir = "data/migrations"
 
     command = Command({
@@ -361,7 +363,7 @@ async def buy_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
 
 
 @app.delete("/tickets/{ticket_id}", status_code=204)
-async def get_user_tickets(ticket_id: int, user: User = Depends(jwt_auth)):
+async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan__event")
     if ticket is None:
         raise NotFoundException("Unknown ticket.")

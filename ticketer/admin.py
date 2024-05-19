@@ -1,11 +1,12 @@
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
+from time import time
 
 from fastapi import FastAPI, Request, Depends
 from starlette.responses import JSONResponse
 
-from ticketer.exceptions import CustomBodyException, NotFoundException
+from ticketer.exceptions import CustomBodyException, NotFoundException, ForbiddenException
 from ticketer.models import User, UserRole, Location, Event, EventPlan
-from ticketer.schemas import AdminUserSearchData, AddEventData
+from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData
 from ticketer.utils.jwt_auth import jwt_auth_role
 
 app = FastAPI()
@@ -40,12 +41,22 @@ async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_
 
 @app.post("/users/{user_id}/ban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
-    await User.filter(id=user_id).update(banned=True)
+    if (user_to_ban := await User.get_or_none(id=user_id)) is None:
+        return
+    if user_to_ban.role >= user.role:
+        raise ForbiddenException("You cannot ban this user.")
+
+    await user_to_ban.update(banned=True)
 
 
 @app.post("/users/{user_id}/unban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
-    await User.filter(id=user_id).update(banned=False)
+    if (user_to_unban := await User.get_or_none(id=user_id)) is None:
+        return
+    if user_to_unban.role >= user.role:
+        raise ForbiddenException("You cannot unban this user.")
+
+    await user_to_unban.update(banned=False)
 
 
 @app.post("/events")
@@ -66,6 +77,45 @@ async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserR
         "id": event.id,
         "name": event.name,
         "description": event.description,
+        "category": event.category,
+        "start_time": int(event.start_time.timestamp()),
+        "end_time": int(event.end_time.timestamp()),
+        "location": {
+            "name": location.name,
+            "longitude": location.longitude,
+            "latitude": location.latitude,
+        },
+    }
+
+
+@app.patch("/events/{event_id}")
+async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+    if (event := await Event.get_or_none(id=event_id)) is None:
+        raise NotFoundException("Unknown event.")
+
+    location = None
+    if data.location_id is not None and (location := await Location.get_or_none(id=data.location_id)) is None:
+        raise NotFoundException("Unknown location.")
+
+    args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time", "image"})
+    if data.start_time is not None:
+        args["start_time"] = datetime.fromtimestamp(data.start_time, UTC)
+    if data.end_time is not None:
+        args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
+    if location is not None:
+        args["location"] = location
+
+    await event.update(**args)
+    if data.plans is not None:
+        await EventPlan.filter(event=event).delete()
+        for plan in data.plans:
+            await EventPlan.create(**plan.model_dump(), event=event)
+
+    return {
+        "id": event.id,
+        "name": event.name,
+        "description": event.description,
+        "category": event.category,
         "start_time": int(event.start_time.timestamp()),
         "end_time": int(event.end_time.timestamp()),
         "location": {

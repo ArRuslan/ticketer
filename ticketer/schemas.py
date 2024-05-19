@@ -78,3 +78,14 @@ class AddEventData(BaseModel):
     location_id: int
     image: str | None = None  # TODO: validate image
     plans: list[EventPlanData] = Field(min_length=1)
+
+
+class EditEventData(AddEventData):
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    start_time: int | None = None
+    end_time: int | None = None
+    location_id: int | None = None
+    image: str | None = None  # TODO: validate image
+    plans: list[EventPlanData] | None = Field(min_length=1, default=None)

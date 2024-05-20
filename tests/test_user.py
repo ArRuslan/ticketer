@@ -4,7 +4,7 @@ import pytest
 from httpx import AsyncClient
 
 from ticketer.utils.mfa import MFA
-from .conftest import create_test_user, create_session_token
+from . import create_test_user, create_session_token
 
 
 @pytest.mark.asyncio

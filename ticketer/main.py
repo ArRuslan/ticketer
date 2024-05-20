@@ -53,6 +53,7 @@ register_tortoise(
 )
 
 
+# noinspection PyUnusedLocal
 @app.exception_handler(CustomBodyException)
 async def custom_exception_handler(request: Request, exc: CustomBodyException):
     return JSONResponse(status_code=exc.code, content=exc.body)
@@ -119,7 +120,7 @@ async def google_auth_connect_link(user: User = Depends(jwt_auth)):
 @app.post("/auth/google/callback")
 async def google_auth_callback(data: GoogleOAuthData):
     state = JWT.decode(data.state or "", config.JWT_KEY)
-    if state.get("type") != "google-connect":
+    if state is not None and state.get("type") != "google-connect":
         state = None
 
     data, token_data = await authorize_google(data.code)
@@ -133,12 +134,12 @@ async def google_auth_callback(data: GoogleOAuthData):
 
     user = None
     if state is not None and eauth is None:
-        # Connect external service to user account
+        # Connect external service to a user account
         if await ExternalAuth.filter(user__id=state["user_id"]).exists():
             raise BadRequestException("You already have connected google account.")
 
         await ExternalAuth.create(
-            user=user,
+            user=await User.get(id=state["user_id"]),
             service="google",
             service_id=data["id"],
             access_token=token_data["access_token"],
@@ -146,7 +147,7 @@ async def google_auth_callback(data: GoogleOAuthData):
             expires_at=int(time() + token_data["expires_in"]),
         )
     elif state is not None and eauth is not None:
-        # Trying to connect external account that is already connected, ERROR!!
+        # Trying to connect an external account that is already connected, ERROR!!
         raise BadRequestException("This account is already connected.")
     elif state is None and eauth is None:
         # Register new user

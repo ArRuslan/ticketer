@@ -3,9 +3,9 @@ from time import time
 import pytest
 from httpx import AsyncClient
 
+from tests import create_test_user
 from ticketer import config
 from ticketer.utils.mfa import MFA
-from .conftest import create_test_user
 
 
 @pytest.mark.asyncio

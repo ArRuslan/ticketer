@@ -4,8 +4,8 @@ from time import time
 import pytest
 from httpx import AsyncClient
 
+from tests import create_test_user, create_session_token
 from ticketer.models import UserRole, Location, Event
-from .conftest import create_test_user, create_session_token
 
 
 @pytest.mark.asyncio

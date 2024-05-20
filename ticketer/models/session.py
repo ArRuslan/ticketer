@@ -1,5 +1,5 @@
 from base64 import b64encode
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from os import urandom
 
 from tortoise import fields
@@ -15,7 +15,7 @@ def gen_token():
 
 
 def gen_expires_at():
-    return datetime.utcnow() + timedelta(days=7)
+    return datetime.now(UTC) + timedelta(days=7)
 
 
 class AuthSession(Model):

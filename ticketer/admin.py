@@ -11,6 +11,7 @@ from ticketer.utils.jwt_auth import jwt_auth_role
 app = FastAPI()
 
 
+# noinspection PyUnusedLocal
 @app.exception_handler(CustomBodyException)
 async def custom_exception_handler(request: Request, exc: CustomBodyException):
     return JSONResponse(status_code=exc.code, content=exc.body)
@@ -58,6 +59,7 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
     await user_to_unban.update(banned=False)
 
 
+# noinspection PyUnusedLocal
 @app.post("/events")
 async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
@@ -87,6 +89,7 @@ async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserR
     }
 
 
+# noinspection PyUnusedLocal
 @app.patch("/events/{event_id}")
 async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (event := await Event.get_or_none(id=event_id)) is None:

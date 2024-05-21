@@ -24,6 +24,9 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
+      - name: Install libvips
+        run: sudo apt-get install libvips-dev
+
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
 

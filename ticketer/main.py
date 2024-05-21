@@ -282,18 +282,7 @@ async def get_events(data: EventSearchData, sort_by: Literal["name", "category",
 
     result = []
     for event in await events_query:
-        result.append({
-            "id": event.id,
-            "name": event.name,
-            "description": event.description,
-            "start_time": int(event.start_time.timestamp()),
-            "end_time": int(event.end_time.timestamp()),
-            "location": {
-                "name": event.location.name,
-                "longitude": event.location.longitude,
-                "latitude": event.location.latitude,
-            },
-        })
+        result.append(event.to_json())
         if with_plans:
             plans = await event.plans.all()
             result[-1]["plans"] = [{
@@ -310,19 +299,7 @@ async def get_events(data: EventSearchData, sort_by: Literal["name", "category",
 async def get_events(event_id: int, with_plans: bool = False):
     event = await Event.get_or_none(id=event_id).select_related("location")
 
-    result = {
-            "id": event.id,
-            "name": event.name,
-            "description": event.description,
-            "start_time": int(event.start_time.timestamp()),
-            "end_time": int(event.end_time.timestamp()),
-            "location": {
-                "name": event.location.name,
-                "longitude": event.location.longitude,
-                "latitude": event.location.latitude,
-            },
-        }
-
+    result = event.to_json()
     if with_plans:
         result["plans"] = [{
             "id": plan.id,
@@ -346,13 +323,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
             "name": ticket.event_plan.name,
             "price": ticket.event_plan.price,
         },
-        "event": {
-            "id": ticket.event_plan.event.id,
-            "name": ticket.event_plan.event.name,
-            "description": ticket.event_plan.event.description,
-            "start_time": int(ticket.event_plan.event.start_time.timestamp()),
-            "end_time": int(ticket.event_plan.event.end_time.timestamp()),
-        },
+        "event": ticket.event_plan.event.to_json(),
         "can_be_cancelled": (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3)
     } for ticket in tickets]
 
@@ -361,6 +332,28 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
 async def buy_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     # TODO: implement
     raise NotImplementedError
+
+
+@app.get("/tickets/{ticket_id}/validation-tokens")
+async def view_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
+    ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
+    if ticket is None:
+        raise NotFoundException("Unknown ticket.")
+
+    plan = ticket.event_plan
+    event = plan.event
+
+    return [JWT.encode(
+        {
+            "user_id": user.id,
+            "ticket_id": ticket.id,
+            "plan_id": plan.id,
+            "event_id": event.id,
+            "ticket_num": num,
+        },
+        config.JWT_KEY,
+        event.end_time.timestamp()
+    ) for num in range(ticket.amount)]
 
 
 @app.delete("/tickets/{ticket_id}", status_code=204)

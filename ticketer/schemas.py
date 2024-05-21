@@ -1,4 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from ticketer.exceptions import BadRequestException
+from ticketer.utils import open_image_b64
 
 
 class BaseAuthData(BaseModel):
@@ -74,8 +77,14 @@ class AddEventData(BaseModel):
     start_time: int
     end_time: int
     location_id: int
-    image: str | None = None  # TODO: validate image
+    image: str | None = None
     plans: list[EventPlanData] = Field(min_length=1)
+
+    @field_validator("image")
+    def validate_image(cls, value: str | None) -> str | None:
+        if value is not None and open_image_b64(value) is None:
+            raise BadRequestException("Invalid image provided.")
+        return value
 
 
 class EditEventData(AddEventData):
@@ -85,5 +94,16 @@ class EditEventData(AddEventData):
     start_time: int | None = None
     end_time: int | None = None
     location_id: int | None = None
-    image: str | None = None  # TODO: validate image
+    image: str | None = ""
     plans: list[EventPlanData] | None = Field(min_length=1, default=None)
+
+    @field_validator("image")
+    def validate_icon_splash_banner(cls, value: str | None) -> str | None:
+        if value and open_image_b64(value) is None:
+            raise BadRequestException("Invalid image provided.")
+        return value
+
+
+class TicketValidationData(BaseModel):
+    event_id: int
+    ticket: str

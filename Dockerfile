@@ -9,8 +9,7 @@ WORKDIR "/ticketer"
 COPY poetry.lock poetry.lock
 COPY pyproject.toml pyproject.toml
 
-# TODO: add libmagic when images will be added
-RUN apk update && apk add --no-cache git bash && apk add --no-cache --virtual build-deps gcc libc-dev && \
+RUN apk update && apk add --no-cache git libmagic vips-dev bash && apk add --no-cache --virtual build-deps gcc libc-dev && \
     python -m venv $POETRY_HOME && $POETRY_HOME/bin/pip install -U pip setuptools && $POETRY_HOME/bin/pip install poetry && \
     poetry install --only main --no-interaction --no-root --no-dev && poetry add gunicorn && \
     apk del build-deps && \

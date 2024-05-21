@@ -12,3 +12,9 @@ class EventPlan(Model):
     price: float = fields.FloatField()
     max_tickets: int = fields.SmallIntField()
     event: models.Event = fields.ForeignKeyField("models.Event")
+
+    def to_json(self) -> dict:
+        return {
+            "name": self.name,
+            "price": self.price,
+        }

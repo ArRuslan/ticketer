@@ -16,6 +16,9 @@ async def test_insufficient_privileges(client: AsyncClient):
     response = await client.post("/admin/users", headers={"Authorization": token})
     assert response.status_code == 403
 
+    response = await client.post("/admin/events", headers={"Authorization": token})
+    assert response.status_code == 403
+
 
 @pytest.mark.asyncio
 async def test_list_users(client: AsyncClient):
@@ -121,6 +124,7 @@ async def test_create_event(client: AsyncClient):
         "category": "concert",
         "start_time": start_time,
         "end_time": start_time+60,
+        "image_id": None,
         "location": {
             "name": location.name,
             "longitude": location.longitude,
@@ -183,6 +187,7 @@ async def test_edit_event(client: AsyncClient):
         "category": "concert1",
         "start_time": now,
         "end_time": now,
+        "image_id": None,
         "location": {
             "name": location2.name,
             "longitude": location2.longitude,

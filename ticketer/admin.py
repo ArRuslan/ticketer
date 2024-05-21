@@ -1,11 +1,18 @@
 from datetime import datetime, UTC
+from io import BytesIO
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, Depends
+from pyvips import Image
 from starlette.responses import JSONResponse
 
-from ticketer.exceptions import CustomBodyException, NotFoundException, ForbiddenException
+from ticketer import config
+from ticketer.config import S3
+from ticketer.exceptions import CustomBodyException, NotFoundException, ForbiddenException, BadRequestException
 from ticketer.models import User, UserRole, Location, Event, EventPlan
-from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData
+from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData
+from ticketer.utils import open_image_b64
+from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth_role
 
 app = FastAPI()
@@ -60,8 +67,8 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 
 
 # noinspection PyUnusedLocal
-@app.post("/events")
-async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+@app.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+async def add_event(data: AddEventData):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
         raise NotFoundException("Unknown location.")
 
@@ -69,29 +76,24 @@ async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserR
     create_args["location"] = location
     create_args["start_time"] = datetime.fromtimestamp(data.start_time, UTC)
     create_args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
+    if data.image and S3 is not None:
+        img: Image = Image.thumbnail_buffer(open_image_b64(create_args["image"]), 720, height=1280, size="force")
+        data: bytes = img.write_to_buffer(".jpg[Q=85]")
+        image_id = str(uuid4())
+        await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(data))
+
+        create_args["image_id"] = image_id
 
     event = await Event.create(**create_args)
     for plan in data.plans:
         await EventPlan.create(**plan.model_dump(), event=event)
 
-    return {
-        "id": event.id,
-        "name": event.name,
-        "description": event.description,
-        "category": event.category,
-        "start_time": int(event.start_time.timestamp()),
-        "end_time": int(event.end_time.timestamp()),
-        "location": {
-            "name": location.name,
-            "longitude": location.longitude,
-            "latitude": location.latitude,
-        },
-    }
+    return event.to_json()
 
 
 # noinspection PyUnusedLocal
-@app.patch("/events/{event_id}")
-async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+@app.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+async def edit_event(event_id: int, data: EditEventData):
     if (event := await Event.get_or_none(id=event_id)) is None:
         raise NotFoundException("Unknown event.")
 
@@ -99,13 +101,24 @@ async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jw
     if data.location_id is not None and (location := await Location.get_or_none(id=data.location_id)) is None:
         raise NotFoundException("Unknown location.")
 
-    args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time", "image"})
+    args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time"}, exclude_defaults=True)
     if data.start_time is not None:
         args["start_time"] = datetime.fromtimestamp(data.start_time, UTC)
     if data.end_time is not None:
         args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
     if location is not None:
         args["location"] = location
+    if "image" in args and S3 is not None:
+        if args["image"] is not None:
+            img: Image = Image.thumbnail_buffer(open_image_b64(args["image"]), 720, height=1280, size="force")
+            data: bytes = img.write_to_buffer(".jpg[Q=85]")
+            image_id = str(uuid4())
+            await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(data))
+        else:
+            image_id = None
+
+        args["image_id"] = image_id
+        del args["image"]
 
     await event.update(**args)
     if data.plans is not None:
@@ -113,16 +126,24 @@ async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jw
         for plan in data.plans:
             await EventPlan.create(**plan.model_dump(), event=event)
 
+    return event.to_json()
+
+
+@app.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+async def validate_ticket(data: TicketValidationData):
+    if (ticket := JWT.decode(data.ticket, config.JWT_KEY)) is None:
+        raise BadRequestException("Invalid ticket.")
+    if data.event_id != ticket["event_id"]:
+        raise BadRequestException("Ticket is issued for another event.")
+
+    user = await User.get(id=ticket["user_id"])
+    plan = await EventPlan.get(id=ticket["plan_id"])
+
     return {
-        "id": event.id,
-        "name": event.name,
-        "description": event.description,
-        "category": event.category,
-        "start_time": int(event.start_time.timestamp()),
-        "end_time": int(event.end_time.timestamp()),
-        "location": {
-            "name": location.name,
-            "longitude": location.longitude,
-            "latitude": location.latitude,
+        "user": {
+            "first_name": user.first_name,
+            "last_name": user.last_name,
         },
+        "ticket_num": ticket["ticket_num"],
+        "plan": plan.to_json(),
     }

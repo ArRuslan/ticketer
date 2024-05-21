@@ -1,14 +1,11 @@
 from os import urandom
-from time import time
 
 import pytest
 from httpx import AsyncClient
 from pytest_httpx import HTTPXMock
 
-from ticketer import config
-from ticketer.utils.mfa import MFA
-from . import google_oauth_token_exchange, google_oauth_user_info, create_session_token
 from . import create_test_user
+from . import google_oauth_token_exchange, google_oauth_user_info, create_session_token
 
 
 def register_http_mock(mock: HTTPXMock) -> tuple[str, str]:

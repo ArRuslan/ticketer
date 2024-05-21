@@ -1,4 +1,10 @@
+from base64 import b64decode
 from datetime import datetime
+from io import BytesIO
+
+from magic import from_buffer
+
+from ticketer.utils.jwt import _b64decode
 
 
 def is_valid_card(card_number: str, expiration_date: str) -> bool:
@@ -25,3 +31,16 @@ def is_valid_card(card_number: str, expiration_date: str) -> bool:
 
     return sum(card) % 10 == 0
 
+
+def open_image_b64(image: str) -> bytes | None:
+    if isinstance(image, str) and (
+            image.startswith("data:image/") or image.startswith("data:application/octet-stream")) and "base64" in \
+            image.split(",")[0]:
+        image = b64decode(image.split(",")[1].encode("utf8"))
+    else:
+        return
+    mime = from_buffer(image[:1024], mime=True)
+    if not mime.startswith("image/") or mime[6:] not in {"png", "jpeg", "jpg", "webp"}:
+        return  # Not a valid image
+
+    return image

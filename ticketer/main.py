@@ -258,7 +258,7 @@ async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)
 
 # TODO: add searching and sorting by price
 @app.post("/events/search")
-async def get_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
+async def search_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
                      sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
                      with_plans: bool = False):
     page = max(page, 1)
@@ -319,10 +319,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
     return [{
         "id": ticket.id,
         "amount": ticket.amount,
-        "plan": {
-            "name": ticket.event_plan.name,
-            "price": ticket.event_plan.price,
-        },
+        "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
         "can_be_cancelled": (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3)
     } for ticket in tickets]

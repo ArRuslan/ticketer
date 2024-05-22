@@ -77,10 +77,10 @@ async def add_event(data: AddEventData):
     create_args["start_time"] = datetime.fromtimestamp(data.start_time, UTC)
     create_args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
     if data.image and S3 is not None:
-        img: Image = Image.thumbnail_buffer(open_image_b64(create_args["image"]), 720, height=1280, size="force")
-        data: bytes = img.write_to_buffer(".jpg[Q=85]")
+        img: Image = Image.thumbnail_buffer(open_image_b64(data.image), 720, height=1280, size="force")
+        image: bytes = img.write_to_buffer(".jpg[Q=85]")
         image_id = str(uuid4())
-        await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(data))
+        await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(image))
 
         create_args["image_id"] = image_id
 
@@ -111,9 +111,9 @@ async def edit_event(event_id: int, data: EditEventData):
     if "image" in args and S3 is not None:
         if args["image"] is not None:
             img: Image = Image.thumbnail_buffer(open_image_b64(args["image"]), 720, height=1280, size="force")
-            data: bytes = img.write_to_buffer(".jpg[Q=85]")
+            image: bytes = img.write_to_buffer(".jpg[Q=85]")
             image_id = str(uuid4())
-            await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(data))
+            await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(image))
         else:
             image_id = None
 

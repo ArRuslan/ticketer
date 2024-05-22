@@ -1,8 +1,10 @@
+from base64 import b64encode
 from datetime import datetime, UTC
 from time import time
 
 import pytest
 from httpx import AsyncClient
+from pyvips import Image
 
 from tests import create_test_user, create_session_token
 from ticketer.models import UserRole, Location, Event
@@ -227,3 +229,37 @@ async def test_edit_event_fail_unknown_event(client: AsyncClient):
     })
     assert response.status_code == 404
     assert "event" in response.json()["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_create_update_event_with_image(client: AsyncClient):
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+    location = await Location.create(name="test", longitude=0, latitude=1)
+
+    image: bytes = Image.black(16, 16).write_to_buffer(".jpg[Q=85]")
+
+    response = await client.post("/admin/events", headers={"Authorization": token}, json={
+        "name": "Test Event",
+        "description": "This is test event",
+        "category": "concert",
+        "start_time": int(time()),
+        "end_time": int(time()),
+        "location_id": location.id,
+        "image": f"data:image/jpg;base64,{b64encode(image).decode('utf8')}",
+        "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
+    })
+    assert response.status_code == 200, response.json()
+    resp = response.json()
+    assert resp["image_id"] is not None
+    event_id = resp["id"]
+    old_image_id = resp["image_id"]
+
+    image: bytes = Image.black(24, 24).write_to_buffer(".jpg[Q=85]")
+    response = await client.patch(f"/admin/events/{event_id}", headers={"Authorization": token}, json={
+        "image": f"data:image/jpg;base64,{b64encode(image).decode('utf8')}",
+    })
+    assert response.status_code == 200
+    resp = response.json()
+    assert resp["image_id"] is not None
+    assert resp["image_id"] != old_image_id

@@ -44,9 +44,13 @@ class AddPaymentMethodData(BaseModel):
 class BuyTicketData(BaseModel):
     event_id: int
     plan_id: int
-    card_number: str
     amount: int = 1
-    mfa_code: str | None = None
+
+    @field_validator("amount")
+    def validate_amount(cls, value: int) -> int:
+        if value <= 0:
+            raise BadRequestException("Invalid amount.")
+        return value
 
 
 class EventSearchData(BaseModel):
@@ -68,6 +72,12 @@ class EventPlanData(BaseModel):
     name: str
     price: float
     max_tickets: int
+
+    @field_validator("max_tickets")
+    def validate_max_tickets(cls, value: int) -> int:
+        if value <= 0:
+            raise BadRequestException("Invalid max_tickets.")
+        return value
 
 
 class AddEventData(BaseModel):
@@ -107,3 +117,7 @@ class EditEventData(AddEventData):
 class TicketValidationData(BaseModel):
     event_id: int
     ticket: str
+
+
+class VerifyPaymentData(BaseModel):
+    mfa_code: str | None = None

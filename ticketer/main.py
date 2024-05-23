@@ -12,9 +12,10 @@ from tortoise.contrib.fastapi import register_tortoise
 
 from ticketer import config, admin
 from ticketer.exceptions import CustomBodyException, BadRequestException, NotFoundException, ForbiddenException
-from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket
+from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket, Payment, PaymentState, \
+    EventPlan
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData, \
-    BuyTicketData, EventSearchData
+    BuyTicketData, EventSearchData, VerifyPaymentData
 from ticketer.utils import is_valid_card
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
@@ -325,17 +326,60 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
     } for ticket in tickets]
 
 
-@app.post("/tickets")
-async def buy_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
-    # TODO: implement
-    raise NotImplementedError
+@app.post("/tickets/request-payment")
+async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
+    if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
+        raise NotFoundException("Unknown event plan.")
+    tickets_available = event_plan.max_tickets = await Ticket.filter(event_plan=event_plan).count()
+    if tickets_available < data.amount:
+        raise BadRequestException(f"{data.amount} tickets not available. Try lowering tickets amount.")
+
+    ticket = await Ticket.create(user=user, event_plan=event_plan, amount=data.amount)
+    payment = await Payment.create(ticket=ticket, paypal_id="TODO")  # TODO: add paypal
+
+    # TODO: send fcm push message
+
+    return {
+        "ticket_id": ticket.id,
+        "payment_id": payment.id,
+        "total_price": event_plan.price * data.amount,
+        "expires_at": int(payment.expires_at.timestamp())
+    }
+
+
+@app.get("/tickets/{ticket_id}/check-verification")
+async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_auth)):
+    if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
+        raise NotFoundException("Unknown ticket.")
+
+    return {
+        "ticket_id": ticket_id,
+        "payment_id": payment.id,
+        "payment_state": payment.state,
+        "expires_at": int(payment.expires_at.timestamp())
+    }
+
+
+@app.post("/tickets/{ticket_id}/verify-payment", status_code=204)
+async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: User = Depends(jwt_auth)):
+    if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
+        raise NotFoundException("Unknown ticket.")
+
+    if user.mfa_key is not None:
+        mfa = MFA(user.mfa_key)
+        if data.mfa_code not in mfa.getCodes():
+            raise BadRequestException("Invalid two-factor authentication code.")
+
+    await payment.update(state=PaymentState.AWAITING_PAYMENT)
 
 
 @app.get("/tickets/{ticket_id}/validation-tokens")
-async def view_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
+async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
     if ticket is None:
         raise NotFoundException("Unknown ticket.")
+    if (payment := await Payment.get_or_none(ticket=ticket)) is None or payment.state != PaymentState.DONE:
+        raise ForbiddenException("Payment is not received for this ticket.")
 
     plan = ticket.event_plan
     event = plan.event
@@ -359,7 +403,10 @@ async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     if ticket is None:
         raise NotFoundException("Unknown ticket.")
 
-    if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3):
+    payment = await Payment.get_or_none(ticket=ticket)
+
+    if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3) and payment is not None and \
+            payment.state == PaymentState.DONE:
         raise BadRequestException("This ticket cannot be cancelled.")
 
     await ticket.delete()

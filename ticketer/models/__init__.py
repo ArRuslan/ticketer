@@ -7,3 +7,4 @@ from .payment_method import PaymentMethod
 from .event_plan import EventPlan
 from .ticket import Ticket
 from .payment import Payment, PaymentState
+from .user_device import UserDevice

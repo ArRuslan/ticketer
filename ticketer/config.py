@@ -8,6 +8,9 @@ OAUTH_GOOGLE_CLIENT_ID = environ["OAUTH_GOOGLE_CLIENT_ID"]
 OAUTH_GOOGLE_CLIENT_SECRET = environ["OAUTH_GOOGLE_CLIENT_SECRET"]
 OAUTH_GOOGLE_REDIRECT = "http://127.0.0.1:8000/auth/google/callback"
 
+FCM_API_ID = environ.get("FCM_API_ID")
+FCM_API_KEY = environ.get("FCM_API_KEY")
+
 JWT_KEY = b64decode(environ["JWT_KEY"])
 
 TURNSTILE_SITEKEY = "1x00000000000000000000AA"  # Always passes, visible

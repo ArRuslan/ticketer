@@ -4,6 +4,7 @@ from time import time
 from typing import Literal
 
 from aerich import Command
+from aiofcm import FCM, Message
 from bcrypt import gensalt, hashpw, checkpw
 from fastapi import FastAPI, Request, Depends
 from starlette.responses import JSONResponse
@@ -13,7 +14,7 @@ from tortoise.contrib.fastapi import register_tortoise
 from ticketer import config, admin
 from ticketer.exceptions import CustomBodyException, BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, AuthSession, ExternalAuth, PaymentMethod, Event, Ticket, Payment, PaymentState, \
-    EventPlan
+    EventPlan, UserDevice
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData, EditProfileData, AddPaymentMethodData, \
     BuyTicketData, EventSearchData, VerifyPaymentData
 from ticketer.utils import is_valid_card
@@ -25,6 +26,7 @@ from ticketer.utils.turnstile import Turnstile
 
 app = FastAPI()
 app.mount("/admin", admin.app)
+fcm = FCM(config.FCM_API_ID, config.FCM_API_KEY)
 
 
 @app.on_event("startup")
@@ -260,8 +262,8 @@ async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)
 # TODO: add searching and sorting by price
 @app.post("/events/search")
 async def search_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
-                     sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
-                     with_plans: bool = False):
+                        sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
+                        with_plans: bool = False):
     page = max(page, 1)
     results_per_page = min(results_per_page, 50)
     results_per_page = max(results_per_page, 5)
@@ -337,7 +339,26 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     ticket = await Ticket.create(user=user, event_plan=event_plan, amount=data.amount)
     payment = await Payment.create(ticket=ticket, paypal_id="TODO")  # TODO: add paypal
 
-    # TODO: send fcm push message
+    async for device in UserDevice.filter(user=user):
+        if not isinstance(event_plan.event, Event):
+            await event_plan.fetch_related("event")
+
+        await fcm.send_message(Message(
+            device_token=device.device_token,
+            notification={
+                "title": "Payment Verification",
+                "body": "Payment verification is needed to buy a ticket",
+                "sound": "default",
+            },
+            data={
+                "ticket_id": ticket.id,
+                "payment_id": payment.id,
+                "amount": data.amount,
+                "event": event_plan.event.to_json(),
+                "expires_at": int(payment.expires_at.timestamp())
+            },
+            priority="high",
+        ))
 
     return {
         "ticket_id": ticket.id,

@@ -27,7 +27,7 @@ class Event(Model):
             "description": self.description,
             "category": self.category,
             "start_time": int(self.start_time.timestamp()),
-            "end_time": int(self.end_time.timestamp()),
+            "end_time": int(self.end_time.timestamp()) if self.end_time is not None else None,
             "image_id": self.image_id,
         }
         if isinstance(self.location, models.Location):

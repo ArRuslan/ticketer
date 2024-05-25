@@ -9,7 +9,7 @@ from ticketer.config import fcm
 from ticketer.exceptions import BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
     EventPlan, UserDevice
-from ticketer.schemas import BuyTicketData, VerifyPaymentData
+from ticketer.schemas import BuyTicketData, VerifyPaymentData, PaymentCallbackData
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
@@ -17,7 +17,7 @@ from ticketer.utils.mfa import MFA
 router = APIRouter(prefix="/tickets")
 
 
-@router.get("/tickets")
+@router.get("")
 async def get_user_tickets(user: User = Depends(jwt_auth)):
     # TODO: filter by start/end times (not-started, started, ended)
     tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")
@@ -31,7 +31,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
     } for ticket in tickets]
 
 
-@router.post("/tickets/request-payment")
+@router.post("/request-payment")
 async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
         raise NotFoundException("Unknown event plan.")
@@ -71,7 +71,7 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     }
 
 
-@router.get("/tickets/{ticket_id}/check-verification")
+@router.get("/{ticket_id}/check-verification")
 async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise NotFoundException("Unknown ticket.")
@@ -84,7 +84,7 @@ async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_aut
     }
 
 
-@router.post("/tickets/{ticket_id}/verify-payment", status_code=204)
+@router.post("/{ticket_id}/verify-payment", status_code=204)
 async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise NotFoundException("Unknown ticket.")
@@ -97,7 +97,15 @@ async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: U
     await payment.update(state=PaymentState.AWAITING_PAYMENT)
 
 
-@router.get("/tickets/{ticket_id}/validation-tokens")
+@router.post("/{ticket_id}/callback", status_code=204)
+async def ticket_payment_callback(ticket_id: int, data: PaymentCallbackData, user: User = Depends(jwt_auth)):
+    if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
+        raise NotFoundException("Unknown ticket.")
+
+    await payment.update(state=PaymentState.DONE)
+
+
+@router.get("/{ticket_id}/validation-tokens")
 async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
     if ticket is None:
@@ -121,7 +129,7 @@ async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
     ) for num in range(ticket.amount)]
 
 
-@router.delete("/tickets/{ticket_id}", status_code=204)
+@router.delete("/{ticket_id}", status_code=204)
 async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan__event")
     if ticket is None:

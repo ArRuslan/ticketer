@@ -121,3 +121,7 @@ class TicketValidationData(BaseModel):
 
 class VerifyPaymentData(BaseModel):
     mfa_code: str | None = None
+
+
+class PaymentCallbackData(BaseModel):
+    ...

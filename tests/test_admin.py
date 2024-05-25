@@ -263,3 +263,10 @@ async def test_create_update_event_with_image(client: AsyncClient):
     resp = response.json()
     assert resp["image_id"] is not None
     assert resp["image_id"] != old_image_id
+
+    response = await client.patch(f"/admin/events/{event_id}", headers={"Authorization": token}, json={
+        "image": None,
+    })
+    assert response.status_code == 200
+    resp = response.json()
+    assert resp["image_id"] is None

@@ -50,7 +50,9 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
         if data.mfa_code not in mfa.getCodes():
             raise BadRequestException("Invalid two-factor authentication code.")
 
-    # TODO: check if phone number is already used
+    if data.phone_number is not None and await User.filter(phone_number=data.phone_number).exists():
+        raise BadRequestException("This phone number is already used.")
+
     j_data = data.model_dump(exclude_defaults=True, exclude={"password", "new_password"})
     if data.new_password is not None:
         j_data["password"] = hashpw(data.new_password.encode("utf8"), gensalt()).decode()

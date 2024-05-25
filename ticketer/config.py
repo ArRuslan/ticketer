@@ -26,7 +26,7 @@ S3_ENDPOINT = environ.get("S3_ENDPOINT", None)
 
 if S3_ACCESS_KEY_ID is not None and S3_SECRET_ACCESS_KEY is not None and S3_ENDPOINT is not None:
     S3 = Client(S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_ENDPOINT)
-else:
+else:  # pragma: no cover
     S3 = None
     warnings.warn(
         "Some of s3 credentials not provided. Images (event images and avatars) uploading support is disabled!"

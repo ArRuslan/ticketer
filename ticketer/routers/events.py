@@ -3,14 +3,14 @@ from typing import Literal
 
 from fastapi import APIRouter
 
-from ticketer.models import Event
+from ticketer.models import Event, EventPlan
 from ticketer.schemas import EventSearchData
 
 router = APIRouter(prefix="/events")
 
 
 # TODO: add searching and sorting by price
-@router.post("/events/search")
+@router.post("/search")
 async def search_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
                         sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
                         with_plans: bool = False):
@@ -27,7 +27,8 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
         del query_args["name"]
         query_args["name__contains"] = data.name
 
-    events_query = Event.filter(**query_args).limit(results_per_page).offset((page - 1) * 10).select_related("location")
+    events_query = Event.filter(**query_args).limit(results_per_page).offset((page - 1) * results_per_page)\
+        .select_related("location")
     if sort_by is not None:
         if sort_direction == "desc":
             sort_by = f"-{sort_by}"
@@ -37,7 +38,7 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
     for event in await events_query:
         result.append(event.to_json())
         if with_plans:
-            plans = await event.plans.all()
+            plans = await EventPlan.filter(event=event)
             result[-1]["plans"] = [{
                 "id": plan.id,
                 "name": plan.name,
@@ -48,7 +49,7 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
     return result
 
 
-@router.get("/events/{event_id}")
+@router.get("/{event_id}")
 async def get_events(event_id: int, with_plans: bool = False):
     event = await Event.get_or_none(id=event_id).select_related("location")
 
@@ -59,6 +60,6 @@ async def get_events(event_id: int, with_plans: bool = False):
             "name": plan.name,
             "price": plan.price,
             "max_tickets": plan.max_tickets,
-        } for plan in await event.plans.all()]
+        } for plan in await EventPlan.filter(event=event)]
 
     return result

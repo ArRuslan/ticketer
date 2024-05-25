@@ -2,29 +2,22 @@ from datetime import datetime, UTC
 from io import BytesIO
 from uuid import uuid4
 
-from fastapi import FastAPI, Request, Depends
+from fastapi import APIRouter, Depends
 from pyvips import Image
-from starlette.responses import JSONResponse
 
 from ticketer import config
 from ticketer.config import S3
-from ticketer.exceptions import CustomBodyException, NotFoundException, ForbiddenException, BadRequestException
+from ticketer.exceptions import NotFoundException, ForbiddenException, BadRequestException
 from ticketer.models import User, UserRole, Location, Event, EventPlan
 from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData
 from ticketer.utils import open_image_b64
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth_role
 
-app = FastAPI()
+router = APIRouter(prefix="/admin")
 
 
-# noinspection PyUnusedLocal
-@app.exception_handler(CustomBodyException)
-async def custom_exception_handler(request: Request, exc: CustomBodyException):
-    return JSONResponse(status_code=exc.code, content=exc.body)
-
-
-@app.post("/users")
+@router.post("/users")
 async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_role(UserRole.ADMIN)),
                        limit: int = 50, page: int = 1):
     query_args = data.model_dump(exclude_defaults=True)
@@ -46,7 +39,7 @@ async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_
     } for user in users]
 
 
-@app.post("/users/{user_id}/ban", status_code=204)
+@router.post("/users/{user_id}/ban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_ban := await User.get_or_none(id=user_id)) is None:
         raise NotFoundException("Unknown user.")
@@ -56,7 +49,7 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
     await user_to_ban.update(banned=True)
 
 
-@app.post("/users/{user_id}/unban", status_code=204)
+@router.post("/users/{user_id}/unban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_unban := await User.get_or_none(id=user_id)) is None:
         raise NotFoundException("Unknown user.")
@@ -67,7 +60,7 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 
 
 # noinspection PyUnusedLocal
-@app.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
 async def add_event(data: AddEventData):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
         raise NotFoundException("Unknown location.")
@@ -92,7 +85,7 @@ async def add_event(data: AddEventData):
 
 
 # noinspection PyUnusedLocal
-@app.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
 async def edit_event(event_id: int, data: EditEventData):
     if (event := await Event.get_or_none(id=event_id)) is None:
         raise NotFoundException("Unknown event.")
@@ -129,7 +122,7 @@ async def edit_event(event_id: int, data: EditEventData):
     return event.to_json()
 
 
-@app.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
 async def validate_ticket(data: TicketValidationData):
     if (ticket := JWT.decode(data.ticket, config.JWT_KEY)) is None:
         raise BadRequestException("Invalid ticket.")

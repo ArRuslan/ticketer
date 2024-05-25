@@ -3,6 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter
 
+from ticketer.exceptions import NotFoundException
 from ticketer.models import Event, EventPlan
 from ticketer.schemas import EventSearchData
 
@@ -51,7 +52,8 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
 
 @router.get("/{event_id}")
 async def get_events(event_id: int, with_plans: bool = False):
-    event = await Event.get_or_none(id=event_id).select_related("location")
+    if (event := await Event.get_or_none(id=event_id).select_related("location")) is None:
+        raise NotFoundException("Unknown event.")
 
     result = event.to_json()
     if with_plans:

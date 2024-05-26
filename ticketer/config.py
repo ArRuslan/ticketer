@@ -33,3 +33,6 @@ else:  # pragma: no cover
     )
 
 fcm = FCM(FCM_API_ID, FCM_API_KEY)
+
+PAYPAL_ID = environ.get("PAYPAL_ID")
+PAYPAL_SECRET = environ.get("PAYPAL_SECRET")

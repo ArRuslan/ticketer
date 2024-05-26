@@ -21,5 +21,5 @@ class Payment(Model):
     id: int = fields.BigIntField(pk=True)
     ticket: models.Ticket = fields.ForeignKeyField("models.Ticket", unique=True)
     state: PaymentState = fields.IntEnumField(PaymentState, default=PaymentState.AWAITING_VERIFICATION)
-    paypal_id: str = fields.CharField(max_length=255)
+    paypal_id: str | None = fields.CharField(max_length=255, null=True, default=None)
     expires_at: datetime = fields.DatetimeField(default=gen_expires_at)

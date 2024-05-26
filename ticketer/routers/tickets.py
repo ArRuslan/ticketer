@@ -9,10 +9,11 @@ from ticketer.config import fcm
 from ticketer.exceptions import BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
     EventPlan, UserDevice
-from ticketer.schemas import BuyTicketData, VerifyPaymentData, PaymentCallbackData
+from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
+from ticketer.utils.paypal import PayPal
 
 router = APIRouter(prefix="/tickets")
 
@@ -35,12 +36,12 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
 async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
         raise NotFoundException("Unknown event plan.")
-    tickets_available = event_plan.max_tickets = await Ticket.filter(event_plan=event_plan).count()
+    tickets_available = event_plan.max_tickets - await Ticket.filter(event_plan=event_plan).count()
     if tickets_available < data.amount:
         raise BadRequestException(f"{data.amount} tickets not available. Try lowering tickets amount.")
 
     ticket = await Ticket.create(user=user, event_plan=event_plan, amount=data.amount)
-    payment = await Payment.create(ticket=ticket, paypal_id="TODO")  # TODO: add paypal
+    payment = await Payment.create(ticket=ticket)
 
     async for device in UserDevice.filter(user=user):
         if not isinstance(event_plan.event, Event):
@@ -65,7 +66,6 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
 
     return {
         "ticket_id": ticket.id,
-        "payment_id": payment.id,
         "total_price": event_plan.price * data.amount,
         "expires_at": int(payment.expires_at.timestamp())
     }
@@ -78,9 +78,9 @@ async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_aut
 
     return {
         "ticket_id": ticket_id,
-        "payment_id": payment.id,
         "payment_state": payment.state,
-        "expires_at": int(payment.expires_at.timestamp())
+        "expires_at": int(payment.expires_at.timestamp()),
+        "paypal_id": payment.paypal_id,
     }
 
 
@@ -88,19 +88,33 @@ async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_aut
 async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise NotFoundException("Unknown ticket.")
+    if payment.state != PaymentState.AWAITING_VERIFICATION:
+        raise BadRequestException("Already verified.")
 
     if user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
             raise BadRequestException("Invalid two-factor authentication code.")
 
-    await payment.update(state=PaymentState.AWAITING_PAYMENT)
+    await payment.fetch_related("ticket", "ticket__event_plan")
+    ticket = payment.ticket
+    event_plan = ticket.event_plan
+
+    await payment.update(
+        state=PaymentState.AWAITING_PAYMENT,
+        paypal_id=await PayPal.create(event_plan.price * ticket.amount)
+    )
 
 
-@router.post("/{ticket_id}/callback", status_code=204)
-async def ticket_payment_callback(ticket_id: int, data: PaymentCallbackData, user: User = Depends(jwt_auth)):
+@router.post("/{ticket_id}/check-payment", status_code=204)
+async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise NotFoundException("Unknown ticket.")
+
+    if payment.state == PaymentState.DONE:
+        return
+    if payment.paypal_id is None or not await PayPal.check(payment.paypal_id):
+        raise BadRequestException("Payment not received yet.")
 
     await payment.update(state=PaymentState.DONE)
 
@@ -125,7 +139,7 @@ async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
             "ticket_num": num,
         },
         config.JWT_KEY,
-        event.end_time.timestamp()
+        (event.end_time or (event.start_time + timedelta(hours=4))).timestamp()
     ) for num in range(ticket.amount)]
 
 

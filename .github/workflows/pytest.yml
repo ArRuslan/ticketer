@@ -37,6 +37,8 @@ jobs:
           JWT_KEY: ${{ secrets.JWT_KEY }}
           OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
           OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+          PAYPAL_ID: ${{ secrets.PAYPAL_ID }}
+          PAYPAL_SECRET: ${{ secrets.PAYPAL_SECRET }}
           S3_ACCESS_KEY_ID: 1
           S3_SECRET_ACCESS_KEY: 1
           S3_ENDPOINT: http://127.0.0.1:10001

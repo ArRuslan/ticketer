@@ -19,7 +19,7 @@ pydantic = {extras = ["email"], version = "^2.7.1"}
 pytest-httpx = "^0.30.0"
 python-magic = "^0.4.27"
 pyvips = "^2.2.3"
-aiofcm = "^1.4"
+aiofcm = {git = "https://github.com/RuslanUC/aiofcm"}
 
 
 [tool.poetry.group.dev.dependencies]

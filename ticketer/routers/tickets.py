@@ -47,22 +47,19 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
         if not isinstance(event_plan.event, Event):
             await event_plan.fetch_related("event")
 
-        await fcm.send_message(Message(
+        #await fcm.send_notification(
+        #    "Payment Verification",
+        #    "Payment verification is needed to buy a ticket",
+        #    device_token=device.device_token,
+        #)
+        await fcm.send_data(
+            ticket_id=ticket.id,
+            payment_id=payment.id,
+            amount=data.amount,
+            event=event_plan.event.to_json(),
+            expires_at=int(payment.expires_at.timestamp()),
             device_token=device.device_token,
-            notification={
-                "title": "Payment Verification",
-                "body": "Payment verification is needed to buy a ticket",
-                "sound": "default",
-            },
-            data={
-                "ticket_id": ticket.id,
-                "payment_id": payment.id,
-                "amount": data.amount,
-                "event": event_plan.event.to_json(),
-                "expires_at": int(payment.expires_at.timestamp())
-            },
-            priority="high",
-        ))
+        )
 
     return {
         "ticket_id": ticket.id,

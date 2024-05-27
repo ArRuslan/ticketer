@@ -1,0 +1,7 @@
+{
+    "project_id": "some-app-12345",
+    "private_key_id": "217bd0c4969983f2077ef73847ce353956aacb28",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+    "client_email": "firebase-adminsdk-12345@some-app-12345.iam.gserviceaccount.com",
+    "token_uri": "https://oauth2.googleapis.com/token"
+}

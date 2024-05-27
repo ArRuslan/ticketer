@@ -9,8 +9,7 @@ OAUTH_GOOGLE_CLIENT_ID = environ["OAUTH_GOOGLE_CLIENT_ID"]
 OAUTH_GOOGLE_CLIENT_SECRET = environ["OAUTH_GOOGLE_CLIENT_SECRET"]
 OAUTH_GOOGLE_REDIRECT = "http://127.0.0.1:8000/auth/google/callback"
 
-FCM_API_ID = int(environ.get("FCM_API_ID", 0))
-FCM_API_KEY = environ.get("FCM_API_KEY")
+FCM_CONFIG = environ.get("FCM_CONFIG", "fcm_config.json")
 
 JWT_KEY = b64decode(environ["JWT_KEY"])
 
@@ -32,7 +31,7 @@ else:  # pragma: no cover
         "Some of s3 credentials not provided. Images (event images and avatars) uploading support is disabled!"
     )
 
-fcm = FCM(FCM_API_ID, FCM_API_KEY)
+fcm = FCM(FCM_CONFIG)
 
 PAYPAL_ID = environ.get("PAYPAL_ID")
 PAYPAL_SECRET = environ.get("PAYPAL_SECRET")

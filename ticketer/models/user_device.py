@@ -8,5 +8,5 @@ from ticketer.models._utils import Model
 
 class UserDevice(Model):
     id: int = fields.BigIntField(pk=True)
-    device_token: str = fields.CharField(max_length=255)
+    device_token: str = fields.CharField(max_length=255, unique=True)
     user: models.User = fields.ForeignKeyField("models.User")

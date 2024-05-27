@@ -3,8 +3,8 @@ from fastapi import APIRouter
 from fastapi import Depends
 
 from ticketer.exceptions import BadRequestException
-from ticketer.models import User, PaymentMethod
-from ticketer.schemas import EditProfileData, AddPaymentMethodData
+from ticketer.models import User, PaymentMethod, UserDevice
+from ticketer.schemas import EditProfileData, AddPaymentMethodData, AddPushDeviceData
 from ticketer.utils import is_valid_card
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
@@ -95,3 +95,8 @@ async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jw
 @router.delete("/payment/{card_number}", status_code=204)
 async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)):
     await PaymentMethod.filter(user=user, card_number=card_number).delete()
+
+
+@router.post("/devices", status_code=204)
+async def add_mobile_device_for_push(data: AddPushDeviceData, user: User = Depends(jwt_auth)):
+    await UserDevice.get_or_create(user=user, device_token=data.device_token)

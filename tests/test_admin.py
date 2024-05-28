@@ -115,6 +115,7 @@ async def test_create_event(client: AsyncClient):
         "end_time": start_time+60,
         "location_id": location.id,
         "image": None,
+        "city": "test",
         "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
     })
     assert response.status_code == 200
@@ -127,6 +128,7 @@ async def test_create_event(client: AsyncClient):
         "start_time": start_time,
         "end_time": start_time+60,
         "image_id": None,
+        "city": "test",
         "location": {
             "name": location.name,
             "longitude": location.longitude,
@@ -149,6 +151,7 @@ async def test_create_event_fail_unknown_location(client: AsyncClient):
         "end_time": start_time+60,
         "location_id": 123456,
         "image": None,
+        "city": "test",
         "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
     })
     assert response.status_code == 404
@@ -166,6 +169,7 @@ async def test_edit_event(client: AsyncClient):
         name="Test Event",
         description="This is test event",
         category="concert",
+        city="test",
         start_time=now,
         end_time=now,
         location=location,
@@ -181,7 +185,7 @@ async def test_edit_event(client: AsyncClient):
         "location_id": location2.id,
         "plans": [{"name": "Test plan 1", "price": 123456, "max_tickets": 5}],
     })
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert response.json() == {
         "id": event.id,
         "name": "Test Event 1",
@@ -190,6 +194,7 @@ async def test_edit_event(client: AsyncClient):
         "start_time": now,
         "end_time": now,
         "image_id": None,
+        "city": "test",
         "location": {
             "name": location2.name,
             "longitude": location2.longitude,
@@ -207,6 +212,7 @@ async def test_edit_event_fail_unknown_location(client: AsyncClient):
         name="Test Event",
         description="This is test event",
         category="concert",
+        city="test",
         start_time=datetime.now(UTC),
         end_time=datetime.now(UTC),
         location=location,
@@ -246,6 +252,7 @@ async def test_create_update_event_with_image(client: AsyncClient):
         "start_time": int(time()),
         "end_time": int(time()),
         "location_id": location.id,
+        "city": "test",
         "image": f"data:image/jpg;base64,{b64encode(image).decode('utf8')}",
         "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
     })

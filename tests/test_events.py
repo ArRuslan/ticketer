@@ -10,7 +10,9 @@ async def create_events(count: int = 10):
     location = await Location.create(name="test", longitude=0, latitude=0)
 
     for i in range(count):
-        event = await Event.create(name=f"Event {i}", description=f"Event {i}", category="test", location=location)
+        event = await Event.create(
+            name=f"Event {i}", description=f"Event {i}", category="test", city="test", location=location
+        )
         await EventPlan.create(name="test", price=100, max_tickets=1000, event=event)
 
 

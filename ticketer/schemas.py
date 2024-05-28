@@ -59,8 +59,6 @@ class EventSearchData(BaseModel):
     time_min: int | None = None
     time_max: int | None = None
     city: str | None = None
-    #price_min: int | None = None
-    #price_max: int | None = None
 
 
 class AdminUserSearchData(BaseModel):
@@ -87,6 +85,7 @@ class AddEventData(BaseModel):
     start_time: int
     end_time: int
     location_id: int
+    city: str
     image: str | None = None
     plans: list[EventPlanData] = Field(min_length=1)
 
@@ -97,7 +96,7 @@ class AddEventData(BaseModel):
         return value
 
 
-class EditEventData(AddEventData):
+class EditEventData(BaseModel):
     name: str | None = None
     description: str | None = None
     category: str | None = None

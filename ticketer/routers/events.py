@@ -10,7 +10,6 @@ from ticketer.schemas import EventSearchData
 router = APIRouter(prefix="/events")
 
 
-# TODO: add searching and sorting by price
 @router.post("/search")
 async def search_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
                         sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,

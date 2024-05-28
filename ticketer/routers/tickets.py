@@ -1,6 +1,5 @@
 from datetime import timedelta, datetime
 
-from aiofcm import Message
 from fastapi import APIRouter
 from fastapi import Depends
 
@@ -20,8 +19,8 @@ router = APIRouter(prefix="/tickets")
 
 @router.get("")
 async def get_user_tickets(user: User = Depends(jwt_auth)):
-    # TODO: filter by start/end times (not-started, started, ended)
-    tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")
+    tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")\
+        .order_by("event_plan__event__start_time")
 
     return [{
         "id": ticket.id,

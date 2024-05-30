@@ -26,6 +26,7 @@ services:
     restart: unless-stopped
   ticketer:
     build: .
+    pull_policy: build
     networks: ['ticketer']
     volumes: ['ticketer_data:/ticketer/data']
     environment:
@@ -36,12 +37,15 @@ services:
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - PAYPAL_ID=${PAYPAL_ID}
+      - PAYPAL_SECRET=${PAYPAL_SECRET}
     depends_on:
       - minio
       - mariadb
     restart: unless-stopped
   nginx:
     image: nginx
+    pull_policy: build
     ports:
       - '127.0.0.1:8000:80'
     networks: ['ticketer']

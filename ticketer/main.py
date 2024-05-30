@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from aerich import Command
-from aiofcm import FCM
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 from tortoise import Tortoise

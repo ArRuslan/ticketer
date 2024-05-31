@@ -5,9 +5,11 @@ import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from httpx import AsyncClient
+from redis.asyncio import Redis
 
 from tests._s3_server import s3_server
 from ticketer import config
+from ticketer.utils.cache import RedisCache
 
 config.DB_CONNECTION_STRING = "sqlite://:memory:"
 
@@ -18,6 +20,9 @@ from ticketer.main import app
 async def app_with_lifespan() -> FastAPI:
     async with LifespanManager(app) as manager:
         yield manager.app
+
+    if RedisCache._connection is not None:
+        await RedisCache._connection.aclose(True)
 
 
 @pytest_asyncio.fixture

@@ -9,6 +9,7 @@ from ticketer.exceptions import BadRequestException, NotFoundException, Forbidde
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
     EventPlan, UserDevice
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
+from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
@@ -19,16 +20,23 @@ router = APIRouter(prefix="/tickets")
 
 @router.get("")
 async def get_user_tickets(user: User = Depends(jwt_auth)):
+    cached = await RedisCache.get("tickets", user.id)
+    if cached is not None:
+        return cached
+
     tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")\
         .order_by("event_plan__event__start_time")
 
-    return [{
+    result = [{
         "id": ticket.id,
         "amount": ticket.amount,
         "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
         "can_be_cancelled": (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3)
     } for ticket in tickets]
+
+    await RedisCache.put("tickets", result, user.id, expires_in=300)
+    return result
 
 
 @router.post("/request-payment")
@@ -41,6 +49,7 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
 
     ticket = await Ticket.create(user=user, event_plan=event_plan, amount=data.amount)
     payment = await Payment.create(ticket=ticket)
+    await RedisCache.delete("tickets", user.id)
 
     async for device in UserDevice.filter(user=user):
         if not isinstance(event_plan.event, Event):
@@ -152,3 +161,4 @@ async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
         raise BadRequestException("This ticket cannot be cancelled.")
 
     await ticket.delete()
+    await RedisCache.delete("tickets", user.id)

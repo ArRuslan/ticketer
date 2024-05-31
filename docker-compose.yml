@@ -24,6 +24,10 @@ services:
       - MARIADB_USER=${MYSQL_USER}
       - MARIADB_PASSWORD=${MYSQL_PASSWORD}
     restart: unless-stopped
+  redis:
+    image: redis:7.2.5-alpine
+    networks: ["ticketer"]
+    restart: unless-stopped
   ticketer:
     build: .
     pull_policy: build
@@ -39,6 +43,7 @@ services:
       - S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - PAYPAL_ID=${PAYPAL_ID}
       - PAYPAL_SECRET=${PAYPAL_SECRET}
+      - REDIS_URL=redis://redis
     depends_on:
       - minio
       - mariadb

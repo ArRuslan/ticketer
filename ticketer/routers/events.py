@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from ticketer.exceptions import NotFoundException
 from ticketer.models import Event, EventPlan
 from ticketer.schemas import EventSearchData
+from ticketer.utils.cache import RedisCache
 
 router = APIRouter(prefix="/events")
 
@@ -17,6 +18,12 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
     page = max(page, 1)
     results_per_page = min(results_per_page, 50)
     results_per_page = max(results_per_page, 5)
+
+    cache_params = (page, results_per_page, data.name, data.category, data.city, data.time_min, data.time_max, sort_by,
+                    sort_direction, with_plans)
+    cached = await RedisCache.get("search", *cache_params)
+    if cached is not None:
+        return cached
 
     query_args = data.model_dump(exclude_defaults=True, exclude={"time_min", "time_max"})
     if data.time_max:
@@ -46,6 +53,7 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
                 "max_tickets": plan.max_tickets,
             } for plan in plans]
 
+    await RedisCache.put("search", result, *cache_params, expires_in=60)
     return result
 
 

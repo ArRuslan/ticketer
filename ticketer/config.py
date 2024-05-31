@@ -18,6 +18,7 @@ TURNSTILE_SECRET = "1x0000000000000000000000000000000AA"  # Always passes,
 # 2x0000000000000000000000000000000AA always fails
 
 DB_CONNECTION_STRING = environ.get("DB_CONNECTION_STRING", "sqlite://ticketer.db")
+REDIS_URL = environ.get("REDIS_URL", "redis://localhost")
 
 S3_ACCESS_KEY_ID = environ.get("S3_ACCESS_KEY_ID", None)
 S3_SECRET_ACCESS_KEY = environ.get("S3_SECRET_ACCESS_KEY", None)

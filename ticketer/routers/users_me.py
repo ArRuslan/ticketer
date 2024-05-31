@@ -6,6 +6,7 @@ from ticketer.exceptions import BadRequestException
 from ticketer.models import User, PaymentMethod, UserDevice
 from ticketer.schemas import EditProfileData, AddPaymentMethodData, AddPushDeviceData
 from ticketer.utils import is_valid_card
+from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
 
@@ -65,14 +66,21 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
 
 @router.get("/payment")
 async def get_payment_methods(user: User = Depends(jwt_auth)):
+    cached = await RedisCache.get("payment_methods", user.id)
+    if cached is not None:
+        return cached
+
     payment_methods = await PaymentMethod.filter(user=user)
 
-    return [{
+    result = [{
         "type": method.type,
         "card_number": method.card_number,
         "expiration_date": method.expiration_date,
         "expired": method.expired(),
     } for method in payment_methods]
+
+    await RedisCache.put("payment_methods", result, user.id, expires_in=600)
+    return result
 
 
 @router.post("/payment")
@@ -83,6 +91,7 @@ async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jw
     await PaymentMethod.get_or_create(user=user, type=data.type, card_number=data.card_number, defaults={
         "expiration_date": data.expiration_date,
     })
+    await RedisCache.delete("payment_methods", user.id)
 
     return {
         "type": data.type,
@@ -95,6 +104,7 @@ async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jw
 @router.delete("/payment/{card_number}", status_code=204)
 async def delete_payment_method(card_number: str, user: User = Depends(jwt_auth)):
     await PaymentMethod.filter(user=user, card_number=card_number).delete()
+    await RedisCache.delete("payment_methods", user.id)
 
 
 @router.post("/devices", status_code=204)

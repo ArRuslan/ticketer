@@ -9,6 +9,7 @@ from ticketer import config
 from ticketer.config import S3
 from ticketer.exceptions import NotFoundException, ForbiddenException, BadRequestException
 from ticketer.models import User, UserRole, Location, Event, EventPlan
+from ticketer.response_schemas import AdminUserData, EventData, AdminTicketValidationData
 from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData
 from ticketer.utils import open_image_b64
 from ticketer.utils.jwt import JWT
@@ -17,7 +18,7 @@ from ticketer.utils.jwt_auth import jwt_auth_role
 router = APIRouter(prefix="/admin")
 
 
-@router.post("/users")
+@router.post("/users", response_model=list[AdminUserData])
 async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_role(UserRole.ADMIN)),
                        limit: int = 50, page: int = 1):
     query_args = data.model_dump(exclude_defaults=True)
@@ -60,7 +61,7 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 
 
 # noinspection PyUnusedLocal
-@router.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))], response_model=EventData)
 async def add_event(data: AddEventData):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
         raise NotFoundException("Unknown location.")
@@ -85,7 +86,7 @@ async def add_event(data: AddEventData):
 
 
 # noinspection PyUnusedLocal
-@router.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))], response_model=EventData)
 async def edit_event(event_id: int, data: EditEventData):
     if (event := await Event.get_or_none(id=event_id)) is None:
         raise NotFoundException("Unknown event.")
@@ -122,7 +123,8 @@ async def edit_event(event_id: int, data: EditEventData):
     return event.to_json()
 
 
-@router.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))])
+@router.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))],
+             response_model=AdminTicketValidationData)
 async def validate_ticket(data: TicketValidationData):
     if (ticket := JWT.decode(data.ticket, config.JWT_KEY)) is None:
         raise BadRequestException("Invalid ticket.")

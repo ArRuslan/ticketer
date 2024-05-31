@@ -20,6 +20,7 @@ async def test_get_user_info(client: AsyncClient):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "phone_number": user.phone_number,
+        "avatar_id": None,
         "mfa_enabled": user.mfa_key is not None,
     }
 
@@ -45,6 +46,7 @@ async def test_edit_user_info(client: AsyncClient):
         "first_name": "ChangedFirst",
         "last_name": "ChangedLast",
         "phone_number": new_phone_number,
+        "avatar_id": None,
         "mfa_enabled": False,
     }
 

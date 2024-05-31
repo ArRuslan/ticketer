@@ -4,6 +4,7 @@ from fastapi import Depends
 
 from ticketer.exceptions import BadRequestException
 from ticketer.models import User, PaymentMethod, UserDevice
+from ticketer.response_schemas import UserData, PaymentMethodData
 from ticketer.schemas import EditProfileData, AddPaymentMethodData, AddPushDeviceData
 from ticketer.utils import is_valid_card
 from ticketer.utils.cache import RedisCache
@@ -13,7 +14,7 @@ from ticketer.utils.mfa import MFA
 router = APIRouter(prefix="/users/me")
 
 
-@router.get("")
+@router.get("", response_model=UserData)
 async def get_user_info(user: User = Depends(jwt_auth)):
     return {
         "id": user.id,
@@ -21,11 +22,12 @@ async def get_user_info(user: User = Depends(jwt_auth)):
         "first_name": user.first_name,
         "last_name": user.last_name,
         "phone_number": user.phone_number,
+        "avatar_id": user.avatar_id,
         "mfa_enabled": user.mfa_key is not None,
     }
 
 
-@router.patch("")
+@router.patch("", response_model=UserData)
 async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     require_password = data.mfa_key is not None or data.new_password is not None or data.email is not None \
                        or data.phone_number is not None
@@ -64,7 +66,7 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     return await get_user_info(user)
 
 
-@router.get("/payment")
+@router.get("/payment", response_model=list[PaymentMethodData])
 async def get_payment_methods(user: User = Depends(jwt_auth)):
     cached = await RedisCache.get("payment_methods", user.id)
     if cached is not None:
@@ -83,7 +85,7 @@ async def get_payment_methods(user: User = Depends(jwt_auth)):
     return result
 
 
-@router.post("/payment")
+@router.post("/payment", response_model=PaymentMethodData)
 async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jwt_auth)):
     if not is_valid_card(data.card_number, data.expiration_date):
         raise BadRequestException("Card details you provided are invalid.")

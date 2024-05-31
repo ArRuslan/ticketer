@@ -8,6 +8,7 @@ from ticketer.config import fcm
 from ticketer.exceptions import BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
     EventPlan, UserDevice
+from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt import JWT
@@ -18,7 +19,7 @@ from ticketer.utils.paypal import PayPal
 router = APIRouter(prefix="/tickets")
 
 
-@router.get("")
+@router.get("", response_model=list[TicketData])
 async def get_user_tickets(user: User = Depends(jwt_auth)):
     cached = await RedisCache.get("tickets", user.id)
     if cached is not None:
@@ -39,7 +40,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
     return result
 
 
-@router.post("/request-payment")
+@router.post("/request-payment", response_model=BuyTicketRespData)
 async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
         raise NotFoundException("Unknown event plan.")
@@ -76,7 +77,7 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
     }
 
 
-@router.get("/{ticket_id}/check-verification")
+@router.get("/{ticket_id}/check-verification", response_model=BuyTicketVerifiedData)
 async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise NotFoundException("Unknown ticket.")
@@ -124,7 +125,7 @@ async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)
     await payment.update(state=PaymentState.DONE)
 
 
-@router.get("/{ticket_id}/validation-tokens")
+@router.get("/{ticket_id}/validation-tokens", response_model=list[str])
 async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
     if ticket is None:

@@ -5,13 +5,14 @@ from fastapi import APIRouter
 
 from ticketer.exceptions import NotFoundException
 from ticketer.models import Event, EventPlan
+from ticketer.response_schemas import EventWithPlansData, EventData
 from ticketer.schemas import EventSearchData
 from ticketer.utils.cache import RedisCache
 
 router = APIRouter(prefix="/events")
 
 
-@router.post("/search")
+@router.post("/search", response_model=list[EventWithPlansData] | list[EventData])
 async def search_events(data: EventSearchData, sort_by: Literal["name", "category", "start_time"] | None = None,
                         sort_direction: Literal["asc", "desc"] = "asc", results_per_page: int = 10, page: int = 1,
                         with_plans: bool = False):
@@ -57,7 +58,7 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
     return result
 
 
-@router.get("/{event_id}")
+@router.get("/{event_id}", response_model=EventWithPlansData | EventData)
 async def get_events(event_id: int, with_plans: bool = False):
     if (event := await Event.get_or_none(id=event_id).select_related("location")) is None:
         raise NotFoundException("Unknown event.")

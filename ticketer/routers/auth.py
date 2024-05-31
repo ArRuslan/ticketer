@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from ticketer import config
 from ticketer.exceptions import ForbiddenException, BadRequestException
 from ticketer.models import User, AuthSession, ExternalAuth
+from ticketer.response_schemas import SuccessAuthData, GoogleAuthUrlData, ConnectGoogleData
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData
 from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
@@ -16,7 +17,7 @@ from ticketer.utils.turnstile import Turnstile
 router = APIRouter(prefix="/auth")
 
 
-@router.post("/register")
+@router.post("/register", response_model=SuccessAuthData)
 async def register(data: RegisterData):
     if not await Turnstile.verify(data.captcha_key):
         raise BadRequestException("Failed to verify captcha!")
@@ -32,7 +33,7 @@ async def register(data: RegisterData):
     return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
 
 
-@router.post("/login")
+@router.post("/login", response_model=SuccessAuthData)
 async def login(data: LoginData):
     if not await Turnstile.verify(data.captcha_key):
         raise BadRequestException("Failed to verify captcha!")
@@ -54,7 +55,7 @@ async def login(data: LoginData):
     return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
 
 
-@router.get("/google")
+@router.get("/google", response_model=GoogleAuthUrlData)
 async def google_auth_link():
     return {
         "url": f"https://accounts.google.com/o/oauth2/auth?response_type=code&client_id={config.OAUTH_GOOGLE_CLIENT_ID}"
@@ -62,7 +63,7 @@ async def google_auth_link():
     }
 
 
-@router.post("/google/connect")
+@router.post("/google/connect", response_model=GoogleAuthUrlData)
 async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     if await ExternalAuth.filter(user=user).exists():
         raise BadRequestException("You already have connected google account.")
@@ -74,7 +75,7 @@ async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     }
 
 
-@router.post("/google/callback")
+@router.post("/google/callback", response_model=ConnectGoogleData)
 async def google_auth_callback(data: GoogleOAuthData):
     state = JWT.decode(data.state or "", config.JWT_KEY)
     if state is not None and state.get("type") != "google-connect":

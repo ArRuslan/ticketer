@@ -9,9 +9,12 @@ from ticketer.utils.paypal import PayPal
 @pytest.mark.asyncio
 async def test_full_purchase(client: AsyncClient):
     user = await create_test_user()
+    manager = await create_test_user(role=UserRole.MANAGER)
     token = await create_session_token(user)
     location = await Location.create(name="test", longitude=0, latitude=0)
-    event = await Event.create(name=f"Test event", description=f"test", category="test", location=location, city="test")
+    event = await Event.create(
+        name=f"Test event", description=f"test", category="test", location=location, city="test", manager=manager
+    )
     plan = await EventPlan.create(name="test", price=100, max_tickets=1000, event=event)
 
     response = await client.post("/tickets/request-payment", headers={"Authorization": token}, json={
@@ -47,9 +50,12 @@ async def test_full_purchase(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_ticket_verify(client: AsyncClient):
     user = await create_test_user()
+    manager = await create_test_user(role=UserRole.MANAGER)
     token = await create_session_token(user)
     location = await Location.create(name="test", longitude=0, latitude=0)
-    event = await Event.create(name=f"Test event", description=f"test", category="test", location=location, city="test")
+    event = await Event.create(
+        name=f"Test event", description=f"test", category="test", location=location, city="test", manager=manager
+    )
     plan = await EventPlan.create(name="test", price=100, max_tickets=1000, event=event)
     ticket = await Ticket.create(amount=1, event_plan=plan, user=user)
     payment = await Payment.create(ticket=ticket, state=PaymentState.AWAITING_PAYMENT)

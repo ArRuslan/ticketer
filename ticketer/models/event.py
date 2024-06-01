@@ -18,6 +18,7 @@ class Event(Model):
     end_time: datetime | None = fields.DatetimeField(null=True, default=None)
     location: models.Location = fields.ForeignKeyField("models.Location")
     image_id: str | None = fields.CharField(max_length=64, null=True, default=None)
+    manager: models.User = fields.ForeignKeyField("models.User")
 
     plans: fields.ReverseRelation[models.EventPlan]
 

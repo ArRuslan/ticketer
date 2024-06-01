@@ -7,12 +7,12 @@ from ticketer import config
 from ticketer.config import fcm
 from ticketer.exceptions import BadRequestException, NotFoundException, ForbiddenException
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
-    EventPlan, UserDevice
+    EventPlan, UserDevice, UserRole
 from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt import JWT
-from ticketer.utils.jwt_auth import jwt_auth
+from ticketer.utils.jwt_auth import jwt_auth, jwt_auth_role
 from ticketer.utils.mfa import MFA
 from ticketer.utils.paypal import PayPal
 
@@ -41,7 +41,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
 
 
 @router.post("/request-payment", response_model=BuyTicketRespData)
-async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth)):
+async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role(exact=UserRole.USER))):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
         raise NotFoundException("Unknown event plan.")
     tickets_available = event_plan.max_tickets - await Ticket.filter(event_plan=event_plan).count()

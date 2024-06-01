@@ -3,15 +3,17 @@ from time import time
 import pytest
 from httpx import AsyncClient
 
-from ticketer.models import Location, Event, EventPlan
+from tests import create_test_user
+from ticketer.models import Location, Event, EventPlan, UserRole
 
 
 async def create_events(count: int = 10):
+    user = await create_test_user(role=UserRole.MANAGER)
     location = await Location.create(name="test", longitude=0, latitude=0)
 
     for i in range(count):
         event = await Event.create(
-            name=f"Event {i}", description=f"Event {i}", category="test", city="test", location=location
+            name=f"Event {i}", description=f"Event {i}", category="test", city="test", location=location, manager=user
         )
         await EventPlan.create(name="test", price=100, max_tickets=1000, event=event)
 

@@ -24,9 +24,15 @@ async def jwt_auth(request: Request) -> User:
     return sess.user
 
 
-def jwt_auth_role(role: UserRole) -> Callable[[User], Awaitable[User]]:
+def jwt_auth_role(higher_than: UserRole | None = None,
+                  exact: UserRole | None = None) -> Callable[[User], Awaitable[User]]:
+    if (higher_than is None and exact is None) or (higher_than is not None and exact is not None):
+        raise ValueError("Must provide either \"higher_than\" or \"exact\"")
+
     async def auth_role(user: User = Depends(jwt_auth)) -> User:
-        if user.role < role:
+        if higher_than is not None and user.role < higher_than:
+            raise ForbiddenException("Insufficient permissions.")
+        if exact is not None and user.role != exact:
             raise ForbiddenException("Insufficient permissions.")
 
         return user

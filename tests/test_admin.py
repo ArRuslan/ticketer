@@ -173,6 +173,7 @@ async def test_edit_event(client: AsyncClient):
         start_time=now,
         end_time=now,
         location=location,
+        manager=user,
     )
 
     now = int(datetime.now(UTC).timestamp())
@@ -216,6 +217,7 @@ async def test_edit_event_fail_unknown_location(client: AsyncClient):
         start_time=datetime.now(UTC),
         end_time=datetime.now(UTC),
         location=location,
+        manager=user,
     )
 
     response = await client.patch(f"/admin/events/{event.id}", headers={"Authorization": token}, json={

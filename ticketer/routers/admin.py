@@ -60,9 +60,14 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
     await user_to_unban.update(banned=False)
 
 
+@router.get("/events", response_model=list[EventData])
+async def get_events(user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+    return [event.to_json() for event in await Event.filter(manager=user).select_related("location")]
+
+
 # noinspection PyUnusedLocal
-@router.post("/events", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))], response_model=EventData)
-async def add_event(data: AddEventData):
+@router.post("/events", response_model=EventData)
+async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
         raise NotFoundException("Unknown location.")
 
@@ -78,7 +83,7 @@ async def add_event(data: AddEventData):
 
         create_args["image_id"] = image_id
 
-    event = await Event.create(**create_args)
+    event = await Event.create(manager=user, **create_args)
     for plan in data.plans:
         await EventPlan.create(**plan.model_dump(), event=event)
 
@@ -86,9 +91,9 @@ async def add_event(data: AddEventData):
 
 
 # noinspection PyUnusedLocal
-@router.patch("/events/{event_id}", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))], response_model=EventData)
-async def edit_event(event_id: int, data: EditEventData):
-    if (event := await Event.get_or_none(id=event_id)) is None:
+@router.patch("/events/{event_id}", response_model=EventData)
+async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
+    if (event := await Event.get_or_none(id=event_id, manager=user)) is None:
         raise NotFoundException("Unknown event.")
 
     location = None
@@ -123,13 +128,14 @@ async def edit_event(event_id: int, data: EditEventData):
     return event.to_json()
 
 
-@router.post("/tickets/validate", dependencies=[Depends(jwt_auth_role(UserRole.MANAGER))],
-             response_model=AdminTicketValidationData)
-async def validate_ticket(data: TicketValidationData):
+@router.post("/tickets/validate", response_model=AdminTicketValidationData)
+async def validate_ticket(data: TicketValidationData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (ticket := JWT.decode(data.ticket, config.JWT_KEY)) is None:
         raise BadRequestException("Invalid ticket.")
     if data.event_id != ticket["event_id"]:
         raise BadRequestException("Ticket is issued for another event.")
+    if not Event.filter(id=data.event_id, manager=user).exists():
+        raise NotFoundException("Unknown event.")
 
     user = await User.get(id=ticket["user_id"])
     plan = await EventPlan.get(id=ticket["plan_id"])

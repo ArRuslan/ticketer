@@ -44,6 +44,8 @@ services:
       - PAYPAL_ID=${PAYPAL_ID}
       - PAYPAL_SECRET=${PAYPAL_SECRET}
       - REDIS_URL=redis://redis
+      - TURNSTILE_SITEKEY=${TURNSTILE_SITEKEY}
+      - TURNSTILE_SECRET=${TURNSTILE_SECRET}
     depends_on:
       - minio
       - mariadb

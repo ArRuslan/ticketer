@@ -1,9 +1,12 @@
 from base64 import b64decode
 from datetime import datetime
 from io import BytesIO
+from uuid import uuid4
 
 from magic import from_buffer
+from pyvips import Image
 
+from ticketer.config import S3
 from ticketer.utils.jwt import _b64decode
 
 
@@ -44,3 +47,17 @@ def open_image_b64(image: str) -> bytes | None:
         return  # Not a valid image
 
     return image
+
+
+async def upload_image_or_not(type_: str, edit_args: dict, key: str = "image", h: int = 1280, w: int = 720) -> None:
+    if key in edit_args and S3 is not None:
+        if edit_args[key] is not None:
+            img: Image = Image.thumbnail_buffer(open_image_b64(edit_args[key]), w, height=h, size="force")
+            image: bytes = img.write_to_buffer(".jpg[Q=85]")
+            image_id = str(uuid4())
+            await S3.upload_object("ticketer", f"{type_}s/{image_id}.jpg", BytesIO(image))
+        else:
+            image_id = None
+
+        edit_args[f"{key}_id"] = image_id
+        del edit_args[key]

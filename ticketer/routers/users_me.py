@@ -6,7 +6,7 @@ from ticketer.errors import Errors
 from ticketer.models import User, PaymentMethod, UserDevice
 from ticketer.response_schemas import UserData, PaymentMethodData
 from ticketer.schemas import EditProfileData, AddPaymentMethodData, AddPushDeviceData
-from ticketer.utils import is_valid_card
+from ticketer.utils import is_valid_card, upload_image_or_not
 from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
@@ -16,15 +16,7 @@ router = APIRouter(prefix="/users/me")
 
 @router.get("", response_model=UserData)
 async def get_user_info(user: User = Depends(jwt_auth)):
-    return {
-        "id": user.id,
-        "email": user.email,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "phone_number": user.phone_number,
-        "avatar_id": user.avatar_id,
-        "mfa_enabled": user.mfa_key is not None,
-    }
+    return user.to_json()
 
 
 @router.patch("", response_model=UserData)
@@ -59,6 +51,8 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     j_data = data.model_dump(exclude_defaults=True, exclude={"password", "new_password"})
     if data.new_password is not None:
         j_data["password"] = hashpw(data.new_password.encode("utf8"), gensalt()).decode()
+
+    await upload_image_or_not("avatar", j_data, "avatar", 640, 640)
 
     if j_data:
         await user.update(**j_data)

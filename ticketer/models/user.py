@@ -10,6 +10,10 @@ class UserRole(IntEnum):
     MANAGER = 1
     ADMIN = 999
 
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_
+
 
 class User(Model):
     id: int = fields.BigIntField(pk=True)
@@ -22,3 +26,28 @@ class User(Model):
     mfa_key: str | None = fields.CharField(max_length=64, null=True, default=None)
     banned: bool = fields.BooleanField(default=False)
     role: int = fields.IntEnumField(UserRole, default=UserRole.USER)
+
+    def to_json(self, full: bool = False) -> dict:
+        if full:
+            return {
+                "id": self.id,
+                "email": self.email,
+                "has_password": self.password is not None,
+                "first_name": self.first_name,
+                "last_name": self.last_name,
+                "avatar_id": self.avatar_id,
+                "phone_number": self.phone_number,
+                "mfa_enabled": self.mfa_key is not None,
+                "banned": self.banned,
+                "role": self.role,
+            }
+
+        return {
+            "id": self.id,
+            "email": self.email,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "phone_number": self.phone_number,
+            "avatar_id": self.avatar_id,
+            "mfa_enabled": self.mfa_key is not None,
+        }

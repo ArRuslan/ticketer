@@ -38,3 +38,5 @@ class Errors:
     CANNOT_UNBAN = ErrorMessageException(403, 31, "You cannot unban this user.")
     TICKET_ANOTHER_EVENT = ErrorMessageException(400, 32, "Ticket is issued for another event.")
     INSUFFICIENT_PERMISSIONS = ErrorMessageException(403, 33, "Insufficient permissions.")
+
+    INVALID_ROLE = ErrorMessageException(400, 34, "Invalid role.")

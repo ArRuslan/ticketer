@@ -4,6 +4,12 @@ from ticketer.errors import Errors
 from ticketer.utils import open_image_b64
 
 
+def validate_image_edit(value: str | None) -> str | None:
+    if value and open_image_b64(value) is None:
+        raise Errors.INVALID_IMAGE
+    return value
+
+
 class BaseAuthData(BaseModel):
     email: EmailStr
     password: str
@@ -29,10 +35,15 @@ class EditProfileData(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     password: str | None = None
+    avatar: str | None = ""
     mfa_key: str | None = ""
     mfa_code: str | None = None
     new_password: str | None = None
     phone_number: int | None = None
+
+    @field_validator("avatar")
+    def validate_avatar(cls, value: str | None) -> str | None:
+        return validate_image_edit(value)
 
 
 class AddPaymentMethodData(BaseModel):
@@ -107,10 +118,8 @@ class EditEventData(BaseModel):
     plans: list[EventPlanData] | None = Field(min_length=1, default=None)
 
     @field_validator("image")
-    def validate_icon_splash_banner(cls, value: str | None) -> str | None:
-        if value and open_image_b64(value) is None:
-            raise Errors.INVALID_IMAGE
-        return value
+    def validate_image(cls, value: str | None) -> str | None:
+        return validate_image_edit(value)
 
 
 class TicketValidationData(BaseModel):
@@ -124,3 +133,15 @@ class VerifyPaymentData(BaseModel):
 
 class AddPushDeviceData(BaseModel):
     device_token: str
+
+
+class AdminUserEditData(BaseModel):
+    first_name: str | None
+    last_name: str | None
+    avatar: str | None = ""
+    mfa_enabled: bool | None
+    role: int | None
+
+    @field_validator("avatar")
+    def validate_avatar(cls, value: str | None) -> str | None:
+        return validate_image_edit(value)

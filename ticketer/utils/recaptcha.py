@@ -10,5 +10,4 @@ class ReCaptcha:
     async def verify(cls, key: str) -> bool:
         async with AsyncClient() as client:
             resp = await client.post(cls.URL, data={"secret": config.RECAPTCHA_SECRET, "response": key})
-            print(resp.json())
             return resp.json()["success"]

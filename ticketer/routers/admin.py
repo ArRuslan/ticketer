@@ -10,8 +10,8 @@ from ticketer.config import S3
 from ticketer.errors import Errors
 from ticketer.models import User, UserRole, Location, Event, EventPlan
 from ticketer.response_schemas import AdminUserData, EventData, AdminTicketValidationData
-from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData
-from ticketer.utils import open_image_b64
+from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData, AdminUserEditData
+from ticketer.utils import open_image_b64, upload_image_or_not
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth_role
 
@@ -26,18 +26,25 @@ async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_
 
     users = await User.filter(**query_args).limit(limit).offset((page - 1) * 10)
 
-    return [{
-        "id": user.id,
-        "email": user.email,
-        "has_password": user.password is not None,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "avatar_id": user.avatar_id,
-        "phone_number": user.phone_number,
-        "mfa_enabled": user.mfa_key is not None,
-        "banned": user.banned,
-        "role": user.role,
-    } for user in users]
+    return [user.to_json(True) for user in users]
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserData)
+async def edit_user(user_id: int, data: AdminUserEditData, admin: User = Depends(jwt_auth_role(UserRole.ADMIN))):
+    if (user := await User.get_or_none(id=user_id)) is None:
+        raise Errors.UNKNOWN_USER
+
+    if data.role is not None and (not UserRole.has_value(data.role) or data.role >= admin.role):
+        raise Errors.INVALID_ROLE
+
+    args = data.model_dump(exclude={"mfa_enabled"}, exclude_defaults=True)
+    if data.mfa_enabled is False:
+        args["mfa_key"] = None
+
+    await upload_image_or_not("avatar", args, "avatar", 640, 640)
+    await user.update(**args)
+
+    return user.to_json(True)
 
 
 @router.post("/users/{user_id}/ban", status_code=204)
@@ -107,17 +114,8 @@ async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jw
         args["end_time"] = datetime.fromtimestamp(data.end_time, UTC)
     if location is not None:
         args["location"] = location
-    if "image" in args and S3 is not None:
-        if args["image"] is not None:
-            img: Image = Image.thumbnail_buffer(open_image_b64(args["image"]), 720, height=1280, size="force")
-            image: bytes = img.write_to_buffer(".jpg[Q=85]")
-            image_id = str(uuid4())
-            await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(image))
-        else:
-            image_id = None
 
-        args["image_id"] = image_id
-        del args["image"]
+    await upload_image_or_not("event", args)
 
     await event.update(**args)
     if data.plans is not None:

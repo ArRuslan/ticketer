@@ -2,6 +2,7 @@ from pathlib import Path
 
 from aerich import Command
 from fastapi import FastAPI, Request
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from tortoise import Tortoise
 from tortoise.contrib.fastapi import register_tortoise
@@ -10,7 +11,15 @@ from ticketer import config
 from ticketer.exceptions import CustomBodyException
 from ticketer.routers import admin, auth, users_me, events, tickets
 
-app = FastAPI()
+app = FastAPI(openapi_url=None)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(users_me.router)

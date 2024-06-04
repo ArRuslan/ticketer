@@ -46,6 +46,10 @@ async def test_full_purchase(client: AsyncClient):
     #response = await client.post(f"/tickets/{ticket_id}/check-payment", headers={"Authorization": token})
     #assert response.status_code == 204
 
+    response = await client.get(f"/tickets", headers={"Authorization": token})
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
 
 @pytest.mark.asyncio
 async def test_ticket_verify(client: AsyncClient):

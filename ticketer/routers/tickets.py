@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, UTC
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -32,7 +32,7 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
         "amount": ticket.amount,
         "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
-        "can_be_cancelled": (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3)
+        "can_be_cancelled": (ticket.event_plan.event.start_time.replace(tzinfo=UTC) - datetime.now(UTC)) > timedelta(hours=3),
     } for ticket in tickets]
 
     await RedisCache.put("tickets", result, user.id, expires_in=300)

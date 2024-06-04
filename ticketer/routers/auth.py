@@ -4,7 +4,7 @@ from bcrypt import hashpw, gensalt, checkpw
 from fastapi import APIRouter, Depends
 
 from ticketer import config
-from ticketer.exceptions import ForbiddenException, BadRequestException
+from ticketer.errors import Errors
 from ticketer.models import User, AuthSession, ExternalAuth
 from ticketer.response_schemas import SuccessAuthData, GoogleAuthUrlData, ConnectGoogleData
 from ticketer.schemas import LoginData, RegisterData, GoogleOAuthData
@@ -20,9 +20,9 @@ router = APIRouter(prefix="/auth")
 @router.post("/register", response_model=SuccessAuthData)
 async def register(data: RegisterData):
     if not await ReCaptcha.verify(data.captcha_key):
-        raise BadRequestException("Failed to verify captcha!")
+        raise Errors.WRONG_CAPTCHA
     if await User.filter(email=data.email).exists():
-        raise BadRequestException("User with this email already exists!")
+        raise Errors.USER_EXISTS
 
     password_hash = hashpw(data.password.encode("utf8"), gensalt()).decode()
     user = await User.create(
@@ -36,20 +36,20 @@ async def register(data: RegisterData):
 @router.post("/login", response_model=SuccessAuthData)
 async def login(data: LoginData):
     if not await ReCaptcha.verify(data.captcha_key):
-        raise BadRequestException("Failed to verify captcha!")
+        raise Errors.WRONG_CAPTCHA
     if (user := await User.get_or_none(email=data.email)) is None:
-        raise BadRequestException("Wrong email or password!")
+        raise Errors.WRONG_CREDENTIALS
 
     if user.banned:
-        raise ForbiddenException("Your account is banned!")
+        raise Errors.USER_BANNED
 
     if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
-        raise BadRequestException("Wrong email or password!")
+        raise Errors.WRONG_CREDENTIALS
 
     if user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factor authentication code.")
+            raise Errors.WRONG_MFA_CODE
 
     session = await AuthSession.create(user=user)
     return {"token": session.to_jwt(), "expires_at": int(session.expires.timestamp())}
@@ -66,7 +66,7 @@ async def google_auth_link():
 @router.post("/google/connect", response_model=GoogleAuthUrlData)
 async def google_auth_connect_link(user: User = Depends(jwt_auth)):
     if await ExternalAuth.filter(user=user).exists():
-        raise BadRequestException("You already have connected google account.")
+        raise Errors.GOOGLE_ALREADY_CONNECTED
 
     state = JWT.encode({"user_id": user.id, "type": "google-connect"}, config.JWT_KEY, expires_in=180)
     return {
@@ -94,7 +94,7 @@ async def google_auth_callback(data: GoogleOAuthData):
     if state is not None and eauth is None:
         # Connect external service to a user account
         if await ExternalAuth.filter(user__id=state["user_id"]).exists():
-            raise BadRequestException("You already have connected google account.")
+            raise Errors.GOOGLE_ALREADY_CONNECTED
 
         await ExternalAuth.create(
             user=await User.get(id=state["user_id"]),
@@ -106,7 +106,7 @@ async def google_auth_callback(data: GoogleOAuthData):
         )
     elif state is not None and eauth is not None:
         # Trying to connect an external account that is already connected, ERROR!!
-        raise BadRequestException("This account is already connected.")
+        raise Errors.GOOGLE_ALREADY_CONNECTED_TO_OTHER
     elif state is None and eauth is None:
         # Register new user
         user = await User.create(first_name=data["given_name"], last_name=data["family_name"])

@@ -5,9 +5,8 @@ from fastapi import Depends
 
 from ticketer import config
 from ticketer.config import fcm
-from ticketer.exceptions import BadRequestException, NotFoundException, ForbiddenException
-from ticketer.models import User, Event, Ticket, Payment, PaymentState, \
-    EventPlan, UserDevice, UserRole
+from ticketer.errors import Errors
+from ticketer.models import User, Event, Ticket, Payment, PaymentState, EventPlan, UserDevice, UserRole
 from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.cache import RedisCache
@@ -43,10 +42,10 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
 @router.post("/request-payment", response_model=BuyTicketRespData)
 async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role(exact=UserRole.USER))):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
-        raise NotFoundException("Unknown event plan.")
+        raise Errors.UNKNOWN_PLAN
     tickets_available = event_plan.max_tickets - await Ticket.filter(event_plan=event_plan).count()
     if tickets_available < data.amount:
-        raise BadRequestException(f"{data.amount} tickets not available. Try lowering tickets amount.")
+        raise Errors.TICKETS_NOT_AVAILABLE.format(data.amount)
 
     ticket = await Ticket.create(user=user, event_plan=event_plan, amount=data.amount)
     payment = await Payment.create(ticket=ticket)
@@ -80,7 +79,7 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role
 @router.get("/{ticket_id}/check-verification", response_model=BuyTicketVerifiedData)
 async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
-        raise NotFoundException("Unknown ticket.")
+        raise Errors.UNKNOWN_TICKET
 
     return {
         "ticket_id": ticket_id,
@@ -93,14 +92,14 @@ async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_aut
 @router.post("/{ticket_id}/verify-payment", status_code=204)
 async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
-        raise NotFoundException("Unknown ticket.")
+        raise Errors.UNKNOWN_TICKET
     if payment.state != PaymentState.AWAITING_VERIFICATION:
-        raise BadRequestException("Already verified.")
+        raise Errors.TICKET_ALREADY_VERIFIED
 
     if user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factor authentication code.")
+            raise Errors.WRONG_MFA_CODE
 
     await payment.fetch_related("ticket", "ticket__event_plan")
     ticket = payment.ticket
@@ -115,12 +114,12 @@ async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: U
 @router.post("/{ticket_id}/check-payment", status_code=204)
 async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
-        raise NotFoundException("Unknown ticket.")
+        raise Errors.UNKNOWN_TICKET
 
     if payment.state == PaymentState.DONE:
         return
     if payment.paypal_id is None or not await PayPal.check(payment.paypal_id):
-        raise BadRequestException("Payment not received yet.")
+        raise Errors.PAYMENT_NOT_RECEIVED
 
     await payment.update(state=PaymentState.DONE)
 
@@ -129,9 +128,9 @@ async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)
 async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
     if ticket is None:
-        raise NotFoundException("Unknown ticket.")
+        raise Errors.UNKNOWN_TICKET
     if (payment := await Payment.get_or_none(ticket=ticket)) is None or payment.state != PaymentState.DONE:
-        raise ForbiddenException("Payment is not received for this ticket.")
+        raise Errors.PAYMENT_NOT_RECEIVED_TOKEN
 
     plan = ticket.event_plan
     event = plan.event
@@ -153,13 +152,13 @@ async def create_ticket_token(ticket_id: int, user: User = Depends(jwt_auth)):
 async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan__event")
     if ticket is None:
-        raise NotFoundException("Unknown ticket.")
+        raise Errors.UNKNOWN_TICKET
 
     payment = await Payment.get_or_none(ticket=ticket)
 
     if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3) and payment is not None and \
             payment.state == PaymentState.DONE:
-        raise BadRequestException("This ticket cannot be cancelled.")
+        raise Errors.TICKET_CANNOT_CANCEL
 
     await ticket.delete()
     await RedisCache.delete("tickets", user.id)

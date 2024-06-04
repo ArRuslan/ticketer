@@ -2,7 +2,7 @@ from bcrypt import gensalt, hashpw, checkpw
 from fastapi import APIRouter
 from fastapi import Depends
 
-from ticketer.exceptions import BadRequestException
+from ticketer.errors import Errors
 from ticketer.models import User, PaymentMethod, UserDevice
 from ticketer.response_schemas import UserData, PaymentMethodData
 from ticketer.schemas import EditProfileData, AddPaymentMethodData, AddPushDeviceData
@@ -32,29 +32,29 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
     require_password = data.mfa_key is not None or data.new_password is not None or data.email is not None \
                        or data.phone_number is not None
     if data.mfa_key and user.mfa_key is not None:
-        raise BadRequestException("Two-factory authentication is already enabled.")
+        raise Errors.MFA_ALREADY_ENABLED
     elif data.mfa_key is None and user.mfa_key is None:
-        raise BadRequestException("Two-factory authentication is already disabled.")
+        raise Errors.MFA_ALREADY_DISABLED
 
     if require_password and not data.password:
-        raise BadRequestException("You need to enter your password.")
+        raise Errors.NEED_PASSWORD
     elif require_password and data.password:
         if not checkpw(data.password.encode("utf8"), user.password.encode("utf8")):
-            raise BadRequestException("Wrong password.")
+            raise Errors.WRONG_PASSWORD
 
     if data.mfa_key:
         mfa = MFA(data.mfa_key)
         if not mfa.valid:
-            raise BadRequestException("Invalid two-factor authentication key.")
+            raise Errors.WRONG_MFA_KEY
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factor authentication code.")
+            raise Errors.WRONG_MFA_CODE
     elif data.mfa_key is None and user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
         if data.mfa_code not in mfa.getCodes():
-            raise BadRequestException("Invalid two-factor authentication code.")
+            raise Errors.WRONG_MFA_CODE
 
     if data.phone_number is not None and await User.filter(phone_number=data.phone_number).exists():
-        raise BadRequestException("This phone number is already used.")
+        raise Errors.PHONE_NUMBER_USED
 
     j_data = data.model_dump(exclude_defaults=True, exclude={"password", "new_password"})
     if data.new_password is not None:
@@ -88,7 +88,7 @@ async def get_payment_methods(user: User = Depends(jwt_auth)):
 @router.post("/payment", response_model=PaymentMethodData)
 async def add_payment_method(data: AddPaymentMethodData, user: User = Depends(jwt_auth)):
     if not is_valid_card(data.card_number, data.expiration_date):
-        raise BadRequestException("Card details you provided are invalid.")
+        raise Errors.INVALID_CARD_DETAILS
 
     await PaymentMethod.get_or_create(user=user, type=data.type, card_number=data.card_number, defaults={
         "expiration_date": data.expiration_date,

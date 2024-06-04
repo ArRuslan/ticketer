@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from ticketer.exceptions import BadRequestException
+from ticketer.errors import Errors
 from ticketer.utils import open_image_b64
 
 
@@ -49,7 +49,7 @@ class BuyTicketData(BaseModel):
     @field_validator("amount")
     def validate_amount(cls, value: int) -> int:
         if value <= 0:
-            raise BadRequestException("Invalid amount.")
+            raise Errors.INVALID_AMOUNT
         return value
 
 
@@ -74,7 +74,7 @@ class EventPlanData(BaseModel):
     @field_validator("max_tickets")
     def validate_max_tickets(cls, value: int) -> int:
         if value <= 0:
-            raise BadRequestException("Invalid max_tickets.")
+            raise Errors.INVALID_MAX_TICKETS
         return value
 
 
@@ -92,7 +92,7 @@ class AddEventData(BaseModel):
     @field_validator("image")
     def validate_image(cls, value: str | None) -> str | None:
         if value is not None and open_image_b64(value) is None:
-            raise BadRequestException("Invalid image provided.")
+            raise Errors.INVALID_IMAGE
         return value
 
 
@@ -109,7 +109,7 @@ class EditEventData(BaseModel):
     @field_validator("image")
     def validate_icon_splash_banner(cls, value: str | None) -> str | None:
         if value and open_image_b64(value) is None:
-            raise BadRequestException("Invalid image provided.")
+            raise Errors.INVALID_IMAGE
         return value
 
 

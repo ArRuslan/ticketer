@@ -1,8 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel
 
-from ticketer.exceptions import BadRequestException
 from ticketer.models import UserRole
-from ticketer.utils import open_image_b64
 
 
 class SuccessAuthData(BaseModel):

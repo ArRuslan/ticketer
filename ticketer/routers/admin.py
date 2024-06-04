@@ -7,7 +7,7 @@ from pyvips import Image
 
 from ticketer import config
 from ticketer.config import S3
-from ticketer.exceptions import NotFoundException, ForbiddenException, BadRequestException
+from ticketer.errors import Errors
 from ticketer.models import User, UserRole, Location, Event, EventPlan
 from ticketer.response_schemas import AdminUserData, EventData, AdminTicketValidationData
 from ticketer.schemas import AdminUserSearchData, AddEventData, EditEventData, TicketValidationData
@@ -43,9 +43,9 @@ async def search_users(data: AdminUserSearchData, user: User = Depends(jwt_auth_
 @router.post("/users/{user_id}/ban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_ban := await User.get_or_none(id=user_id)) is None:
-        raise NotFoundException("Unknown user.")
+        raise Errors.UNKNOWN_USER
     if user_to_ban.role >= user.role:
-        raise ForbiddenException("You cannot ban this user.")
+        raise Errors.CANNOT_BAN
 
     await user_to_ban.update(banned=True)
 
@@ -53,9 +53,9 @@ async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADM
 @router.post("/users/{user_id}/unban", status_code=204)
 async def ban_user(user_id: int, user: User = Depends(jwt_auth_role(UserRole.ADMIN))):
     if (user_to_unban := await User.get_or_none(id=user_id)) is None:
-        raise NotFoundException("Unknown user.")
+        raise Errors.UNKNOWN_USER
     if user_to_unban.role >= user.role:
-        raise ForbiddenException("You cannot unban this user.")
+        raise Errors.CANNOT_UNBAN
 
     await user_to_unban.update(banned=False)
 
@@ -69,7 +69,7 @@ async def get_events(user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
 @router.post("/events", response_model=EventData)
 async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (location := await Location.get_or_none(id=data.location_id)) is None:
-        raise NotFoundException("Unknown location.")
+        raise Errors.UNKNOWN_LOCATION
 
     create_args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time", "image"})
     create_args["location"] = location
@@ -94,11 +94,11 @@ async def add_event(data: AddEventData, user: User = Depends(jwt_auth_role(UserR
 @router.patch("/events/{event_id}", response_model=EventData)
 async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (event := await Event.get_or_none(id=event_id, manager=user)) is None:
-        raise NotFoundException("Unknown event.")
+        raise Errors.UNKNOWN_EVENT
 
     location = None
     if data.location_id is not None and (location := await Location.get_or_none(id=data.location_id)) is None:
-        raise NotFoundException("Unknown location.")
+        raise Errors.UNKNOWN_LOCATION
 
     args = data.model_dump(exclude={"location_id", "plans", "start_time", "end_time"}, exclude_defaults=True)
     if data.start_time is not None:
@@ -131,11 +131,11 @@ async def edit_event(event_id: int, data: EditEventData, user: User = Depends(jw
 @router.post("/tickets/validate", response_model=AdminTicketValidationData)
 async def validate_ticket(data: TicketValidationData, user: User = Depends(jwt_auth_role(UserRole.MANAGER))):
     if (ticket := JWT.decode(data.ticket, config.JWT_KEY)) is None:
-        raise BadRequestException("Invalid ticket.")
+        raise Errors.INVALID_TICKET
     if data.event_id != ticket["event_id"]:
-        raise BadRequestException("Ticket is issued for another event.")
+        raise Errors.TICKET_ANOTHER_EVENT
     if not Event.filter(id=data.event_id, manager=user).exists():
-        raise NotFoundException("Unknown event.")
+        raise Errors.UNKNOWN_EVENT
 
     user = await User.get(id=ticket["user_id"])
     plan = await EventPlan.get(id=ticket["plan_id"])

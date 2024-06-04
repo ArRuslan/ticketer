@@ -48,4 +48,4 @@ register_tortoise(
 # noinspection PyUnusedLocal
 @app.exception_handler(CustomBodyException)
 async def custom_exception_handler(request: Request, exc: CustomBodyException):
-    return JSONResponse(status_code=exc.code, content=exc.body)
+    return JSONResponse(status_code=exc.status_code, content=exc.body)

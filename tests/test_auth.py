@@ -23,7 +23,8 @@ async def test_register(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_captcha_fail(client: AsyncClient):
-    config.TURNSTILE_SECRET = "2x0000000000000000000000000000000AA"
+    old_recaptcha_secret = config.RECAPTCHA_SECRET
+    config.RECAPTCHA_SECRET = "2x0000000000000000000000000000000AA"
 
     response = await client.post("/auth/register", json={
         "email": f"test{time()}@gmail.com",
@@ -35,7 +36,7 @@ async def test_register_captcha_fail(client: AsyncClient):
     assert response.status_code == 400
     assert "captcha" in response.json()["error_message"]
 
-    config.TURNSTILE_SECRET = "1x0000000000000000000000000000000AA"
+    config.RECAPTCHA_SECRET = old_recaptcha_secret
 
 
 @pytest.mark.asyncio
@@ -78,7 +79,8 @@ async def test_login(client: AsyncClient):
 async def test_login_captcha_fail(client: AsyncClient):
     user = await create_test_user()
 
-    config.TURNSTILE_SECRET = "2x0000000000000000000000000000000AA"
+    old_recaptcha_secret = config.RECAPTCHA_SECRET
+    config.RECAPTCHA_SECRET = "2x0000000000000000000000000000000AA"
     response = await client.post("/auth/login", json={
         "email": user.email,
         "password": "123456789",
@@ -86,7 +88,7 @@ async def test_login_captcha_fail(client: AsyncClient):
     })
     assert response.status_code == 400
     assert "captcha" in response.json()["error_message"]
-    config.TURNSTILE_SECRET = "1x0000000000000000000000000000000AA"
+    config.RECAPTCHA_SECRET = old_recaptcha_secret
 
 
 @pytest.mark.asyncio

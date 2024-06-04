@@ -12,14 +12,14 @@ from ticketer.utils.google_oauth import authorize_google
 from ticketer.utils.jwt import JWT
 from ticketer.utils.jwt_auth import jwt_auth
 from ticketer.utils.mfa import MFA
-from ticketer.utils.turnstile import Turnstile
+from ticketer.utils.recaptcha import ReCaptcha
 
 router = APIRouter(prefix="/auth")
 
 
 @router.post("/register", response_model=SuccessAuthData)
 async def register(data: RegisterData):
-    if not await Turnstile.verify(data.captcha_key):
+    if not await ReCaptcha.verify(data.captcha_key):
         raise BadRequestException("Failed to verify captcha!")
     if await User.filter(email=data.email).exists():
         raise BadRequestException("User with this email already exists!")
@@ -35,7 +35,7 @@ async def register(data: RegisterData):
 
 @router.post("/login", response_model=SuccessAuthData)
 async def login(data: LoginData):
-    if not await Turnstile.verify(data.captcha_key):
+    if not await ReCaptcha.verify(data.captcha_key):
         raise BadRequestException("Failed to verify captcha!")
     if (user := await User.get_or_none(email=data.email)) is None:
         raise BadRequestException("Wrong email or password!")

@@ -6,12 +6,10 @@ Ticketer is a platform for buying tickets for events.
 
 ## Features
 
-- Ticket booking/buying
-- Google and facebook authentication integration
+- Ticket buying
+- Google authentication integration
 - Easy to use
 - Cross-platform
-- Social networks integration
-- ...
 
 
 ## Deployment
@@ -35,6 +33,24 @@ And run it:
 ```bash
   poetry run python -m ticketer
 ```
+
+## Create admin user
+
+After you run an application at least once, you can create an admin user:
+
+If you use docker to run Ticketer, execute the following command:
+```bash
+  docker compose exec -it ticketer poetry run python /ticketer/add_admin_user.py
+```
+
+If you use poetry, execute the following command:
+```bash
+  poetry run python /ticketer/add_admin_user.py
+```
+
+After this, you can open http://127.0.0.1:8080/admin-ui in your browser and log in into admin account.
+In the admin ui you can manage users or events.
+
 ## Environment Variables
 
 To run this project, you will need to add the following environment variables to your .env file or set them via `set` or `export` command depending on your system:
@@ -42,6 +58,8 @@ To run this project, you will need to add the following environment variables to
  - `OAUTH_GOOGLE_CLIENT_ID`
  - `OAUTH_GOOGLE_CLIENT_SECRET`
  - `JWT_KEY`
+
+you can see a full list of variables in .env.example file. 
 
 
 ## Running Tests

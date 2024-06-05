@@ -53,6 +53,7 @@ def get_ban_unban(user: User) -> str:
     return "unban" if user.banned else "ban"
 
 
+@app.get('/api/admin-ui/login/', response_model=FastUI, response_model_exclude_none=True)
 @app.get('/api/admin-ui/login', response_model=FastUI, response_model_exclude_none=True)
 def admin_login(user: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     if user is not None:
@@ -68,6 +69,7 @@ def admin_login(user: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     ]
 
 
+@app.post("/api/admin-ui/login/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/login", response_model=FastUI, response_model_exclude_none=True)
 async def admin_login_post(form: Annotated[LoginForm, fastui_form(LoginForm)]) -> list[AnyComponent]:
     if (user := await User.get_or_none(email=form.email, role__gte=UserRole.MANAGER)) is None:
@@ -81,6 +83,7 @@ async def admin_login_post(form: Annotated[LoginForm, fastui_form(LoginForm)]) -
     return [c.FireEvent(event=AuthEvent(token=session.to_jwt(), url=f"/admin-ui/{user_redirect_to(user)}"))]
 
 
+@app.get("/api/admin-ui/users/", response_model=FastUI, response_model_exclude_none=True)
 @app.get("/api/admin-ui/users", response_model=FastUI, response_model_exclude_none=True)
 async def users_table(admin: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     if admin is None or admin.role != UserRole.ADMIN:
@@ -106,6 +109,7 @@ async def users_table(admin: User | None = Depends(auth_admin)) -> list[AnyCompo
     ]
 
 
+@app.post("/api/admin-ui/users/{user_id}/edit/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/users/{user_id}/edit", response_model=FastUI, response_model_exclude_none=True)
 async def edit_user(user_id: int, first_name: str = Form(), last_name: str = Form(), role: int = Form(),
                     admin: User | None = Depends(auth_admin)):
@@ -124,6 +128,7 @@ async def edit_user(user_id: int, first_name: str = Form(), last_name: str = For
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/users/{user_id}?{int(time())}"))]
 
 
+@app.post("/api/admin-ui/users/{user_id}/ban/")
 @app.post("/api/admin-ui/users/{user_id}/ban")
 async def ban_user(user_id: int, admin: User | None = Depends(auth_admin)):
     if admin is None or admin.role != UserRole.ADMIN:
@@ -136,6 +141,7 @@ async def ban_user(user_id: int, admin: User | None = Depends(auth_admin)):
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/users/{user_id}?{int(time())}"))]
 
 
+@app.post("/api/admin-ui/users/{user_id}/unban/")
 @app.post("/api/admin-ui/users/{user_id}/unban")
 async def unban_user(user_id: int, admin: User | None = Depends(auth_admin)):
     if admin is None or admin.role != UserRole.ADMIN:
@@ -148,6 +154,7 @@ async def unban_user(user_id: int, admin: User | None = Depends(auth_admin)):
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/users/{user_id}?{int(time())}"))]
 
 
+@app.get("/api/admin-ui/users/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
 @app.get("/api/admin-ui/users/{user_id}", response_model=FastUI, response_model_exclude_none=True)
 async def user_info(user_id: int, admin: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     if admin is None or admin.role != UserRole.ADMIN:
@@ -242,6 +249,7 @@ async def user_info(user_id: int, admin: User | None = Depends(auth_admin)) -> l
     ]
 
 
+@app.post("/api/admin-ui/events/{event_id}/edit/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events/{event_id}/edit", response_model=FastUI, response_model_exclude_none=True)
 async def edit_event(event_id: int, name: str = Form(), description: str = Form(), category: str = Form(),
                      city: str = Form(), admin: User | None = Depends(auth_admin)):
@@ -261,6 +269,7 @@ async def edit_event(event_id: int, name: str = Form(), description: str = Form(
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event_id}?{int(time())}"))]
 
 
+@app.post("/api/admin-ui/events/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events", response_model=FastUI, response_model_exclude_none=True)
 async def add_event(name: str = Form(), description: str = Form(), category: str = Form(),
                     city: str = Form(), admin: User | None = Depends(auth_admin)):
@@ -282,6 +291,7 @@ async def add_event(name: str = Form(), description: str = Form(), category: str
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event.id}?{int(time())}"))]
 
 
+@app.get("/api/admin-ui/events/", response_model=FastUI, response_model_exclude_none=True)
 @app.get("/api/admin-ui/events", response_model=FastUI, response_model_exclude_none=True)
 async def events_table(admin: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     if admin is None:
@@ -358,6 +368,7 @@ async def events_table(admin: User | None = Depends(auth_admin)) -> list[AnyComp
     ]
 
 
+@app.get("/api/admin-ui/events/{event_id}/", response_model=FastUI, response_model_exclude_none=True)
 @app.get("/api/admin-ui/events/{event_id}", response_model=FastUI, response_model_exclude_none=True)
 async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) -> list[AnyComponent]:
     if admin is None:

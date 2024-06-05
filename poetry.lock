@@ -634,6 +634,23 @@ typer = ">=0.12.3"
 uvicorn = {version = ">=0.15.0", extras = ["standard"]}
 
 [[package]]
+name = "fastui"
+version = "0.6.0"
+description = "Build better UIs faster."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "fastui-0.6.0-py3-none-any.whl", hash = "sha256:f5720ed88a6e135e91876d424a2e7a916e208d630d85d87db754881fcacd5f0e"},
+    {file = "fastui-0.6.0.tar.gz", hash = "sha256:9ad5749aa0e0b0aa59a4f8109a632532f56dce2b46c0239df661c3a6cbec9084"},
+]
+
+[package.dependencies]
+pydantic = {version = ">=2.5.2", extras = ["email"]}
+
+[package.extras]
+fastapi = ["fastapi (>=0.104)", "python-multipart (>=0.0.6)"]
+
+[[package]]
 name = "flask"
 version = "3.0.3"
 description = "A simple framework for building complex web applications."
@@ -2123,4 +2140,4 @@ h11 = ">=0.9.0,<1"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "9f645ec42e0dd05bdf63d009da71daefae65d5696218ed83442780da68800317"
+content-hash = "1e8ca1e83ed933145f0d771731acda9d8afb30d3c2937c8a3fb2ec46183ea51e"

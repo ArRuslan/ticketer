@@ -9,7 +9,7 @@ from tortoise.contrib.fastapi import register_tortoise
 
 from ticketer import config
 from ticketer.exceptions import CustomBodyException
-from ticketer.routers import admin, auth, users_me, events, tickets
+from ticketer.routers import admin, auth, users_me, events, tickets, admin_ui
 
 app = FastAPI(openapi_url=None)
 
@@ -25,6 +25,8 @@ app.include_router(auth.router)
 app.include_router(users_me.router)
 app.include_router(events.router)
 app.include_router(tickets.router)
+
+app.mount("/", admin_ui.app)
 
 
 @app.on_event("startup")

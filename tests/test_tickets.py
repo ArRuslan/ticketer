@@ -47,18 +47,10 @@ async def test_full_purchase(client: AsyncClient):
     assert response.status_code == 200
     assert response.json()["payment_state"] == PaymentState.AWAITING_VERIFICATION
 
-    response = await client.get(f"/tickets/pending-confirmations", headers={"Authorization": token})
-    assert response.status_code == 200
-    assert len(response.json()) == 1
-
     response = await client.post(f"/tickets/{ticket_id}/verify-payment", headers={"Authorization": token}, json={})
     assert response.status_code == 204
     response = await client.post(f"/tickets/{ticket_id}/verify-payment", headers={"Authorization": token}, json={})
     assert response.status_code == 400
-
-    response = await client.get(f"/tickets/pending-confirmations", headers={"Authorization": token})
-    assert response.status_code == 200
-    assert len(response.json()) == 0
 
     response = await client.get(f"/tickets/{ticket_id}/check-verification", headers={"Authorization": token})
     assert response.status_code == 200

@@ -7,7 +7,7 @@ from ticketer import config
 from ticketer.config import fcm
 from ticketer.errors import Errors
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, EventPlan, UserDevice, UserRole
-from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData, PendingConfirmationData
+from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt import JWT
@@ -33,20 +33,11 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
         "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
         "can_be_cancelled": await ticket.can_be_cancelled(),
+        "payment": await (await ticket.get_payment()).to_json()
     } for ticket in tickets]
 
     await RedisCache.put("tickets", result, user.id, expires_in=300)
     return result
-
-
-@router.get("/pending-confirmations", response_model=list[PendingConfirmationData])
-async def get_pending_confirmations(user: User = Depends(jwt_auth)):
-    pending = await Payment.filter(ticket__user=user, state=PaymentState.AWAITING_VERIFICATION).select_related("ticket")
-
-    return [{
-        "ticket_id": payment.ticket.id,
-        "expires_at": int(payment.expires_at.timestamp()),
-    } for payment in pending]
 
 
 @router.get("/{ticket_id}", response_model=TicketData)
@@ -65,6 +56,7 @@ async def get_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
         "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
         "can_be_cancelled": await ticket.can_be_cancelled(),
+        "payment": await (await ticket.get_payment()).to_json(),
     }
 
     await RedisCache.put("tickets_one", result, user.id, ticket_id, expires_in=300)
@@ -143,6 +135,8 @@ async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: U
         state=PaymentState.AWAITING_PAYMENT,
         paypal_id=await PayPal.create(event_plan.price * ticket.amount)
     )
+    await RedisCache.delete("tickets", user.id)
+    await RedisCache.delete("tickets_one", user.id, ticket_id)
 
 
 @router.post("/{ticket_id}/check-payment", status_code=204)
@@ -156,6 +150,7 @@ async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)
         raise Errors.PAYMENT_NOT_RECEIVED
 
     await payment.update(state=PaymentState.DONE)
+    await RedisCache.delete("tickets", user.id)
     await RedisCache.delete("tickets_one", user.id, ticket_id)
 
 

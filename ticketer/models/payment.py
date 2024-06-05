@@ -23,3 +23,19 @@ class Payment(Model):
     state: PaymentState = fields.IntEnumField(PaymentState, default=PaymentState.AWAITING_VERIFICATION)
     paypal_id: str | None = fields.CharField(max_length=255, null=True, default=None)
     expires_at: datetime = fields.DatetimeField(default=gen_expires_at)
+
+    async def to_json(self, full: bool = False) -> dict:
+        if full:
+            if not isinstance(self.ticket, models.Ticket):
+                await self.fetch_related("ticket")
+            return {
+                "ticket_id": self.ticket.id,
+                "state": self.state,
+                "paypal_id": self.paypal_id,
+                "expires_at": int(self.expires_at.timestamp()),
+            }
+
+        return {
+            "state": self.state,
+            "expires_at": int(self.expires_at.timestamp()),
+        }

@@ -71,12 +71,18 @@ class AdminTicketValidationData(BaseModel):
     plan: EventPlanData
 
 
+class PartialPaymentData(BaseModel):
+    state: int
+    expires_at: int
+
+
 class TicketData(BaseModel):
     id: int
     amount: int
     plan: EventPlanData
     event: EventData
     can_be_cancelled: bool
+    payment: PartialPaymentData | None = None
 
 
 class BuyTicketRespData(BaseModel):

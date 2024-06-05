@@ -1,7 +1,8 @@
-from datetime import timedelta
+from datetime import timedelta, datetime, UTC
 
 from fastapi import APIRouter
 from fastapi import Depends
+from tortoise.expressions import Subquery
 
 from ticketer import config
 from ticketer.config import fcm
@@ -67,6 +68,13 @@ async def get_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
 async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role(exact=UserRole.USER))):
     if (event_plan := await EventPlan.get_or_none(id=data.plan_id, event__id=data.event_id)) is None:
         raise Errors.UNKNOWN_PLAN
+
+    await Ticket.filter(id__in=Subquery(
+        Payment.filter(ticket__event_plan=event_plan, state__not=PaymentState.DONE, expires_at__lt=datetime.now(UTC))
+               .select_related("ticket")
+               .values_list("ticket__id", flat=True)
+    )).delete()
+
     tickets_available = event_plan.max_tickets - await Ticket.filter(event_plan=event_plan).count()
     if tickets_available < data.amount:
         raise Errors.TICKETS_NOT_AVAILABLE.format(data.amount)
@@ -106,6 +114,10 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role
 async def check_ticket_verification(ticket_id: int, user: User = Depends(jwt_auth)):
     if (payment := await Payment.get_or_none(ticket__id=ticket_id, ticket__user=user)) is None:
         raise Errors.UNKNOWN_TICKET
+    if payment.expired():
+        await payment.delete()
+        await Ticket.filter(id=ticket_id).delete()
+        raise Errors.UNKNOWN_TICKET
 
     return {
         "ticket_id": ticket_id,
@@ -121,6 +133,10 @@ async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: U
         raise Errors.UNKNOWN_TICKET
     if payment.state != PaymentState.AWAITING_VERIFICATION:
         raise Errors.TICKET_ALREADY_VERIFIED
+    if payment.expired():
+        await payment.delete()
+        await Ticket.filter(id=ticket_id).delete()
+        raise Errors.UNKNOWN_TICKET
 
     if user.mfa_key is not None:
         mfa = MFA(user.mfa_key)
@@ -133,7 +149,8 @@ async def verify_ticket_payment(ticket_id: int, data: VerifyPaymentData, user: U
 
     await payment.update(
         state=PaymentState.AWAITING_PAYMENT,
-        paypal_id=await PayPal.create(event_plan.price * ticket.amount)
+        paypal_id=await PayPal.create(event_plan.price * ticket.amount),
+        expires_at=datetime.now(UTC) + timedelta(minutes=30)
     )
     await RedisCache.delete("tickets", user.id)
     await RedisCache.delete("tickets_one", user.id, ticket_id)

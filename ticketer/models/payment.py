@@ -24,6 +24,9 @@ class Payment(Model):
     paypal_id: str | None = fields.CharField(max_length=255, null=True, default=None)
     expires_at: datetime = fields.DatetimeField(default=gen_expires_at)
 
+    def expired(self) -> bool:
+        return self.expires_at.replace(tzinfo=UTC) < datetime.now(UTC)
+
     async def to_json(self, full: bool = False) -> dict:
         if full:
             if not isinstance(self.ticket, models.Ticket):

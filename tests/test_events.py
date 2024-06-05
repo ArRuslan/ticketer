@@ -3,7 +3,7 @@ from time import time
 import pytest
 from httpx import AsyncClient
 
-from tests import create_test_user
+from tests import create_test_user, create_session_token
 from ticketer.models import Location, Event, EventPlan, UserRole
 
 
@@ -75,3 +75,23 @@ async def test_event_with_event_plan(client: AsyncClient):
     response = await client.get(f"/events/{event['id']}", params={"with_plans": True})
     assert response.status_code == 200
     assert response.json() == event
+
+
+@pytest.mark.asyncio
+async def test_get_manager_events(client: AsyncClient):
+    user = await create_test_user(role=UserRole.MANAGER)
+    token = await create_session_token(user)
+
+    response = await client.get(f"/admin/events", headers={"authorization": token})
+    assert response.status_code == 200
+    assert len(response.json()) == 0
+
+    location = await Location.create(name="test", longitude=0, latitude=0)
+    event = await Event.create(
+        name=f"Test event", description=f"test", category="test", location=location, city="test", manager=user
+    )
+    await EventPlan.create(name="test", price=100, max_tickets=1000, event=event)
+
+    response = await client.get(f"/admin/events", headers={"authorization": token})
+    assert response.status_code == 200
+    assert len(response.json()) == 1

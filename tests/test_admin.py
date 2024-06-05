@@ -10,6 +10,10 @@ from tests import create_test_user, create_session_token
 from ticketer.models import UserRole, Location, Event
 
 
+image16: bytes = Image.black(16, 16).write_to_buffer(".jpg[Q=85]")
+image24: bytes = Image.black(24, 24).write_to_buffer(".jpg[Q=85]")
+
+
 @pytest.mark.asyncio
 async def test_insufficient_privileges(client: AsyncClient):
     user = await create_test_user()
@@ -245,8 +249,6 @@ async def test_create_update_event_with_image(client: AsyncClient):
     token = await create_session_token(user)
     location = await Location.create(name="test", longitude=0, latitude=1)
 
-    image: bytes = Image.black(16, 16).write_to_buffer(".jpg[Q=85]")
-
     response = await client.post("/admin/events", headers={"Authorization": token}, json={
         "name": "Test Event",
         "description": "This is test event",
@@ -255,7 +257,7 @@ async def test_create_update_event_with_image(client: AsyncClient):
         "end_time": int(time()),
         "location_id": location.id,
         "city": "test",
-        "image": f"data:image/jpg;base64,{b64encode(image).decode('utf8')}",
+        "image": f"data:image/jpg;base64,{b64encode(image16).decode('utf8')}",
         "plans": [{"name": "Test plan", "price": 123456, "max_tickets": 5}],
     })
     assert response.status_code == 200, response.json()
@@ -264,9 +266,8 @@ async def test_create_update_event_with_image(client: AsyncClient):
     event_id = resp["id"]
     old_image_id = resp["image_id"]
 
-    image: bytes = Image.black(24, 24).write_to_buffer(".jpg[Q=85]")
     response = await client.patch(f"/admin/events/{event_id}", headers={"Authorization": token}, json={
-        "image": f"data:image/jpg;base64,{b64encode(image).decode('utf8')}",
+        "image": f"data:image/jpg;base64,{b64encode(image24).decode('utf8')}",
     })
     assert response.status_code == 200
     resp = response.json()
@@ -279,3 +280,48 @@ async def test_create_update_event_with_image(client: AsyncClient):
     assert response.status_code == 200
     resp = response.json()
     assert resp["image_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_user(client: AsyncClient):
+    test_user = await create_test_user()
+
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+
+    response = await client.patch(f"/admin/users/{test_user.id}", headers={"Authorization": token}, json={
+        "mfa_enabled": False,
+        "avatar": f"data:image/jpg;base64,{b64encode(image24).decode('utf8')}",
+    })
+    assert response.status_code == 200, response.json()
+    j = response.json()
+    assert not j["mfa_enabled"]
+    assert j["avatar_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_edit_role_fail(client: AsyncClient):
+    test_user = await create_test_user(role=UserRole.ADMIN)
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+
+    response = await client.patch(f"/admin/users/{test_user.id}", headers={"Authorization": token}, json={
+        "role": UserRole.USER
+    })
+    assert response.status_code == 400
+
+    await test_user.update(role=UserRole.USER)
+
+    response = await client.patch(f"/admin/users/{test_user.id}", headers={"Authorization": token}, json={
+        "role": UserRole.ADMIN
+    })
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_edit_nonexistent_user(client: AsyncClient):
+    user = await create_test_user(role=UserRole.ADMIN)
+    token = await create_session_token(user)
+
+    response = await client.patch(f"/admin/users/{user.id+1000}", headers={"Authorization": token}, json={})
+    assert response.status_code == 404

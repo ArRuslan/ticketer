@@ -23,7 +23,7 @@ async def search_events(data: EventSearchData, sort_by: Literal["name", "categor
     cache_params = (page, results_per_page, data.name, data.category, data.city, data.time_min, data.time_max, sort_by,
                     sort_direction, with_plans)
     cached = await RedisCache.get("search", *cache_params)
-    if cached is not None:
+    if cached is not None:  # pragma: no cover
         return cached
 
     query_args = data.model_dump(exclude_defaults=True, exclude={"time_min", "time_max"})

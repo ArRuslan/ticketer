@@ -136,11 +136,11 @@ class AddPushDeviceData(BaseModel):
 
 
 class AdminUserEditData(BaseModel):
-    first_name: str | None
-    last_name: str | None
+    first_name: str | None = None
+    last_name: str | None = None
     avatar: str | None = ""
-    mfa_enabled: bool | None
-    role: int | None
+    mfa_enabled: bool | None = None
+    role: int | None = None
 
     @field_validator("avatar")
     def validate_avatar(cls, value: str | None) -> str | None:

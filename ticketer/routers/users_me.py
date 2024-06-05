@@ -63,7 +63,7 @@ async def edit_user_info(data: EditProfileData, user: User = Depends(jwt_auth)):
 @router.get("/payment", response_model=list[PaymentMethodData])
 async def get_payment_methods(user: User = Depends(jwt_auth)):
     cached = await RedisCache.get("payment_methods", user.id)
-    if cached is not None:
+    if cached is not None:  # pragma: no cover
         return cached
 
     payment_methods = await PaymentMethod.filter(user=user)

@@ -27,6 +27,9 @@ def register_http_mock(mock: HTTPXMock) -> tuple[str, str]:
 async def test_google_register(client: AsyncClient, httpx_mock: HTTPXMock):
     correct_code, correct_token = register_http_mock(httpx_mock)
 
+    response = await client.get("/auth/google")
+    assert response.status_code == 200
+
     response = await client.post("/auth/google/callback", json={
         "code": correct_code,
     })

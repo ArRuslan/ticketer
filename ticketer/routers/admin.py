@@ -34,7 +34,8 @@ async def edit_user(user_id: int, data: AdminUserEditData, admin: User = Depends
     if (user := await User.get_or_none(id=user_id)) is None:
         raise Errors.UNKNOWN_USER
 
-    if data.role is not None and (not UserRole.has_value(data.role) or data.role >= admin.role):
+    if data.role is not None and (not UserRole.has_value(data.role) or data.role >= admin.role) or \
+            user.role >= admin.role:
         raise Errors.INVALID_ROLE
 
     args = data.model_dump(exclude={"mfa_enabled"}, exclude_defaults=True)

@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime, UTC
+from datetime import timedelta
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/tickets")
 @router.get("", response_model=list[TicketData])
 async def get_user_tickets(user: User = Depends(jwt_auth)):
     cached = await RedisCache.get("tickets", user.id)
-    if cached is not None:
+    if cached is not None:  # pragma: no cover
         return cached
 
     tickets = await Ticket.filter(user=user).select_related("event_plan", "event_plan__event")\
@@ -39,10 +39,20 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
     return result
 
 
-@router.get("{ticket_id}", response_model=TicketData)
+@router.get("/pending-confirmations", response_model=list[PendingConfirmationData])
+async def get_pending_confirmations(user: User = Depends(jwt_auth)):
+    pending = await Payment.filter(ticket__user=user, state=PaymentState.AWAITING_VERIFICATION).select_related("ticket")
+
+    return [{
+        "ticket_id": payment.ticket.id,
+        "expires_at": int(payment.expires_at.timestamp()),
+    } for payment in pending]
+
+
+@router.get("/{ticket_id}", response_model=TicketData)
 async def get_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     cached = await RedisCache.get("tickets_one", user.id, ticket_id)
-    if cached is not None:
+    if cached is not None:  # pragma: no cover
         return cached
 
     ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
@@ -98,16 +108,6 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role
         "total_price": total_price,
         "expires_at": int(payment.expires_at.timestamp())
     }
-
-
-@router.get("/pending-confirmations", response_model=list[PendingConfirmationData])
-async def get_pending_confirmations(user: User = Depends(jwt_auth)):
-    pending = await Payment.filter(state=PaymentState.AWAITING_VERIFICATION, ticket__user=user).select_related("ticket")
-
-    return [{
-        "ticket_id": payment.ticket.id,
-        "expires_at": int(payment.expires_at.timestamp()),
-    } for payment in pending]
 
 
 @router.get("/{ticket_id}/check-verification", response_model=BuyTicketVerifiedData)
@@ -189,11 +189,9 @@ async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
     if ticket is None:
         raise Errors.UNKNOWN_TICKET
 
-    payment = await Payment.get_or_none(ticket=ticket)
-
-    if (ticket.event_plan.event.start_time.replace(tzinfo=UTC) - datetime.now(UTC)) > timedelta(hours=3) and \
-            payment is not None and payment.state == PaymentState.DONE:
+    if not await ticket.can_be_cancelled():
         raise Errors.TICKET_CANNOT_CANCEL
 
     await ticket.delete()
     await RedisCache.delete("tickets", user.id)
+    await RedisCache.delete("tickets_one", user.id, ticket_id)

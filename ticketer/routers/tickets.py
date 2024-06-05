@@ -7,7 +7,7 @@ from ticketer import config
 from ticketer.config import fcm
 from ticketer.errors import Errors
 from ticketer.models import User, Event, Ticket, Payment, PaymentState, EventPlan, UserDevice, UserRole
-from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData
+from ticketer.response_schemas import TicketData, BuyTicketVerifiedData, BuyTicketRespData, PendingConfirmationData
 from ticketer.schemas import BuyTicketData, VerifyPaymentData
 from ticketer.utils.cache import RedisCache
 from ticketer.utils.jwt import JWT
@@ -32,10 +32,32 @@ async def get_user_tickets(user: User = Depends(jwt_auth)):
         "amount": ticket.amount,
         "plan": ticket.event_plan.to_json(),
         "event": ticket.event_plan.event.to_json(),
-        "can_be_cancelled": (ticket.event_plan.event.start_time.replace(tzinfo=UTC) - datetime.now(UTC)) > timedelta(hours=3),
+        "can_be_cancelled": await ticket.can_be_cancelled(),
     } for ticket in tickets]
 
     await RedisCache.put("tickets", result, user.id, expires_in=300)
+    return result
+
+
+@router.get("{ticket_id}", response_model=TicketData)
+async def get_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
+    cached = await RedisCache.get("tickets_one", user.id, ticket_id)
+    if cached is not None:
+        return cached
+
+    ticket = await Ticket.get_or_none(id=ticket_id, user=user).select_related("event_plan", "event_plan__event")
+    if ticket is None:
+        raise Errors.UNKNOWN_TICKET
+
+    result = {
+        "id": ticket.id,
+        "amount": ticket.amount,
+        "plan": ticket.event_plan.to_json(),
+        "event": ticket.event_plan.event.to_json(),
+        "can_be_cancelled": await ticket.can_be_cancelled(),
+    }
+
+    await RedisCache.put("tickets_one", result, user.id, ticket_id, expires_in=300)
     return result
 
 
@@ -51,29 +73,41 @@ async def request_ticket(data: BuyTicketData, user: User = Depends(jwt_auth_role
     payment = await Payment.create(ticket=ticket)
     await RedisCache.delete("tickets", user.id)
 
+    total_price = event_plan.price * data.amount
+
     async for device in UserDevice.filter(user=user):
         if not isinstance(event_plan.event, Event):
             await event_plan.fetch_related("event")
 
-        #await fcm.send_notification(
-        #    "Payment Verification",
-        #    "Payment verification is needed to buy a ticket",
-        #    device_token=device.device_token,
-        #)
-        await fcm.send_data(
-            ticket_id=ticket.id,
-            payment_id=payment.id,
-            amount=data.amount,
-            event=event_plan.event.to_json(),
-            expires_at=int(payment.expires_at.timestamp()),
+        await fcm.send_notification(
+            "Payment Verification",
+            f"Payment verification for ${total_price:.2f} is needed to buy a ticket",
             device_token=device.device_token,
         )
+        #await fcm.send_data(
+        #    ticket_id=ticket.id,
+        #    payment_id=payment.id,
+        #    amount=data.amount,
+        #    event=event_plan.event.to_json(),
+        #    expires_at=int(payment.expires_at.timestamp()),
+        #    device_token=device.device_token,
+        #)
 
     return {
         "ticket_id": ticket.id,
-        "total_price": event_plan.price * data.amount,
+        "total_price": total_price,
         "expires_at": int(payment.expires_at.timestamp())
     }
+
+
+@router.get("/pending-confirmations", response_model=list[PendingConfirmationData])
+async def get_pending_confirmations(user: User = Depends(jwt_auth)):
+    pending = await Payment.filter(state=PaymentState.AWAITING_VERIFICATION, ticket__user=user).select_related("ticket")
+
+    return [{
+        "ticket_id": payment.ticket.id,
+        "expires_at": int(payment.expires_at.timestamp()),
+    } for payment in pending]
 
 
 @router.get("/{ticket_id}/check-verification", response_model=BuyTicketVerifiedData)
@@ -122,6 +156,7 @@ async def ticket_payment_callback(ticket_id: int, user: User = Depends(jwt_auth)
         raise Errors.PAYMENT_NOT_RECEIVED
 
     await payment.update(state=PaymentState.DONE)
+    await RedisCache.delete("tickets_one", user.id, ticket_id)
 
 
 @router.get("/{ticket_id}/validation-tokens", response_model=list[str])
@@ -156,8 +191,8 @@ async def cancel_user_ticket(ticket_id: int, user: User = Depends(jwt_auth)):
 
     payment = await Payment.get_or_none(ticket=ticket)
 
-    if (ticket.event_plan.event.start_time - datetime.now()) > timedelta(hours=3) and payment is not None and \
-            payment.state == PaymentState.DONE:
+    if (ticket.event_plan.event.start_time.replace(tzinfo=UTC) - datetime.now(UTC)) > timedelta(hours=3) and \
+            payment is not None and payment.state == PaymentState.DONE:
         raise Errors.TICKET_CANNOT_CANCEL
 
     await ticket.delete()

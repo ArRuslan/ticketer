@@ -97,3 +97,8 @@ class PaymentMethodData(BaseModel):
     card_number: str
     expiration_date: str
     expired: bool
+
+
+class PendingConfirmationData(BaseModel):
+    ticket_id: int
+    expires_at: int

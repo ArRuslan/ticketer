@@ -1,17 +1,21 @@
 from datetime import datetime
+from io import BytesIO
 from time import time
 from typing import Annotated
+from uuid import uuid4
 
 from bcrypt import checkpw
-from fastapi import FastAPI, HTTPException, Form, Depends, Header
+from fastapi import FastAPI, HTTPException, Form, Depends, Header, UploadFile
 from fastui import FastUI, AnyComponent, components as c, prebuilt_html
 from fastui.components.display import DisplayLookup
 from fastui.events import GoToEvent, PageEvent, AuthEvent
-from fastui.forms import SelectOption, fastui_form
+from fastui.forms import SelectOption, fastui_form, FormFile
 from pydantic import BaseModel, EmailStr, Field
+from pyvips import Image
 from starlette.responses import HTMLResponse
 
 from ticketer import config
+from ticketer.config import S3
 from ticketer.errors import Errors
 from ticketer.models import User, UserRole, AuthSession, Event, Location, EventPlan, UserPydantic, EventPydantic, \
     EventPlanPydantic
@@ -253,7 +257,8 @@ async def user_info(user_id: int, admin: User | None = Depends(auth_admin)) -> l
 @app.post("/api/admin-ui/events/{event_id}/edit/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events/{event_id}/edit", response_model=FastUI, response_model_exclude_none=True)
 async def edit_event(event_id: int, name: str = Form(), description: str = Form(), category: str = Form(),
-                     city: str = Form(), start_date: datetime = Form(), admin: User | None = Depends(auth_admin)):
+                     image: UploadFile | None = FormFile(accept="image/*", max_size=1024 * 1024 * 4),
+                     city: str = Form(), admin: User | None = Depends(auth_admin)):
     if admin is None:
         return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/login"))]
 
@@ -265,16 +270,29 @@ async def edit_event(event_id: int, name: str = Form(), description: str = Form(
         description=description,
         category=category,
         city=city,
-        start_time=start_date,
+        image_id=await event_upload_image(image),
     )
 
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event_id}?{int(time())}"))]
+
+
+async def event_upload_image(image: UploadFile | None) -> str | None:
+    if image is None:
+        return
+
+    img: Image = Image.thumbnail_buffer(await image.read(), 720, height=1280, size="force")
+    image: bytes = img.write_to_buffer(".jpg[Q=85]")
+    image_id = str(uuid4())
+    await S3.upload_object("ticketer", f"events/{image_id}.jpg", BytesIO(image))
+
+    return image_id
 
 
 @app.post("/api/admin-ui/events/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events", response_model=FastUI, response_model_exclude_none=True)
 async def add_event(name: str = Form(), description: str = Form(), category: str = Form(),
                     city: str = Form(), start_date: datetime = Form(), max_tickets: int = Form(), price: int = Form(),
+                    image: UploadFile | None = FormFile(accept="image/*", max_size=1024 * 1024 * 4),
                     admin: User | None = Depends(auth_admin)):
     if admin is None:
         return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/login"))]
@@ -288,6 +306,7 @@ async def add_event(name: str = Form(), description: str = Form(), category: str
         start_time=start_date,
         location=location,
         manager=admin,
+        image_id=await event_upload_image(image),
     )
     await EventPlan.create(name="Basic", price=price, max_tickets=max_tickets, event=event)
 
@@ -376,6 +395,12 @@ async def events_table(admin: User | None = Depends(auth_admin)) -> list[AnyComp
                                     required=True,
                                     html_type="number",
                                 ),
+                                c.FormFieldFile(
+                                    name="image",
+                                    title="Image",
+                                    required=False,
+                                    accept="image/*"
+                                ),
                             ],
                             loading=[c.Spinner(text='Adding...')],
                             submit_url=f"/api/admin-ui/events",
@@ -458,6 +483,12 @@ async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) ->
                                     title='City',
                                     initial=event.city,
                                     required=True,
+                                ),
+                                c.FormFieldFile(
+                                    name="image",
+                                    title="Image",
+                                    required=False,
+                                    accept="image/*"
                                 ),
                             ],
                             loading=[c.Spinner(text='Editing...')],

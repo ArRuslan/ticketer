@@ -13,7 +13,8 @@ from starlette.responses import HTMLResponse
 
 from ticketer import config
 from ticketer.errors import Errors
-from ticketer.models import User, UserRole, AuthSession, Event, Location, EventPlan, UserPydantic, EventPydantic
+from ticketer.models import User, UserRole, AuthSession, Event, Location, EventPlan, UserPydantic, EventPydantic, \
+    EventPlanPydantic
 from ticketer.utils.jwt import JWT
 
 app = FastAPI()
@@ -252,7 +253,7 @@ async def user_info(user_id: int, admin: User | None = Depends(auth_admin)) -> l
 @app.post("/api/admin-ui/events/{event_id}/edit/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events/{event_id}/edit", response_model=FastUI, response_model_exclude_none=True)
 async def edit_event(event_id: int, name: str = Form(), description: str = Form(), category: str = Form(),
-                     city: str = Form(), admin: User | None = Depends(auth_admin)):
+                     city: str = Form(), start_date: datetime = Form(), admin: User | None = Depends(auth_admin)):
     if admin is None:
         return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/login"))]
 
@@ -264,6 +265,7 @@ async def edit_event(event_id: int, name: str = Form(), description: str = Form(
         description=description,
         category=category,
         city=city,
+        start_time=start_date,
     )
 
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event_id}?{int(time())}"))]
@@ -272,7 +274,8 @@ async def edit_event(event_id: int, name: str = Form(), description: str = Form(
 @app.post("/api/admin-ui/events/", response_model=FastUI, response_model_exclude_none=True)
 @app.post("/api/admin-ui/events", response_model=FastUI, response_model_exclude_none=True)
 async def add_event(name: str = Form(), description: str = Form(), category: str = Form(),
-                    city: str = Form(), admin: User | None = Depends(auth_admin)):
+                    city: str = Form(), start_date: datetime = Form(), max_tickets: int = Form(), price: int = Form(),
+                    admin: User | None = Depends(auth_admin)):
     if admin is None:
         return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/login"))]
 
@@ -282,11 +285,26 @@ async def add_event(name: str = Form(), description: str = Form(), category: str
         description=description,
         category=category,
         city=city,
-        start_time=datetime.now(UTC) + timedelta(days=7),
+        start_time=start_date,
         location=location,
         manager=admin,
     )
-    await EventPlan.create(name="Basic", price=100, max_tickets=100, event=event)
+    await EventPlan.create(name="Basic", price=price, max_tickets=max_tickets, event=event)
+
+    return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event.id}?{int(time())}"))]
+
+
+@app.post("/api/admin-ui/events/{event_id}/plans/", response_model=FastUI, response_model_exclude_none=True)
+@app.post("/api/admin-ui/events/{event_id}/plans", response_model=FastUI, response_model_exclude_none=True)
+async def add_event_plan(event_id: int, name: str = Form(), max_tickets: int = Form(), price: int = Form(),
+                         admin: User | None = Depends(auth_admin)):
+    if admin is None:
+        return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/login"))]
+
+    if (event := await Event.get_or_none(id=event_id, manager=admin)) is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    await EventPlan.create(name=name, price=price, max_tickets=max_tickets, event=event)
 
     return [c.FireEvent(event=GoToEvent(url=f"/admin-ui/events/{event.id}?{int(time())}"))]
 
@@ -341,6 +359,18 @@ async def events_table(admin: User | None = Depends(auth_admin)) -> list[AnyComp
                                     required=True,
                                 ),
                                 c.FormFieldInput(
+                                    name='start_date',
+                                    title='Start date',
+                                    required=True,
+                                    html_type="datetime-local",
+                                ),
+                                c.FormFieldInput(
+                                    name='price',
+                                    title='Price',
+                                    required=True,
+                                    html_type="number",
+                                ),
+                                c.FormFieldInput(
                                     name='max_tickets',
                                     title='Maximum number of tickets',
                                     required=True,
@@ -377,6 +407,7 @@ async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) ->
     if (event := await Event.get_or_none(id=event_id, manager=admin)) is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    events = [await EventPlanPydantic.from_tortoise_orm(plan) for plan in await EventPlan.filter(event=event)]
     event = await EventPydantic.from_tortoise_orm(event)
     return [
         c.Page(
@@ -384,11 +415,21 @@ async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) ->
                 c.Link(components=[c.Text(text='<- Back')], on_click=GoToEvent(url='/admin-ui/events')),
                 c.Heading(text=event.name, level=2),
                 c.Details(data=event),
-                c.Div(components=[
-                    c.Button(
-                        text="Edit", on_click=PageEvent(name='edit-modal')
-                    ),
-                ]),
+                c.Button(text="Edit", on_click=PageEvent(name='edit-modal')),
+
+                c.Heading(text="Plans", level=4),
+                c.Table(
+                    data=events,
+                    data_model=EventPlanPydantic,
+                    columns=[
+                        DisplayLookup(field="name"),
+                        DisplayLookup(field="price"),
+                        DisplayLookup(field="max_tickets"),
+                    ],
+                ),
+                c.Button(text="Add plan", on_click=PageEvent(name='add-plan-modal')),
+
+
                 c.Modal(
                     title='Edit event',
                     body=[
@@ -418,13 +459,6 @@ async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) ->
                                     initial=event.city,
                                     required=True,
                                 ),
-                                # c.FormFieldInput(
-                                #    name='max_tickets',
-                                #    title='Maximum number of tickets',
-                                #    initial=event.max_tickets,
-                                #    required=True,
-                                #    html_type="number",
-                                # ),
                             ],
                             loading=[c.Spinner(text='Editing...')],
                             submit_url=f"/api/admin-ui/events/{event.id}/edit",
@@ -441,6 +475,46 @@ async def event_info(event_id: int, admin: User | None = Depends(auth_admin)) ->
                         ),
                     ],
                     open_trigger=PageEvent(name='edit-modal'),
+                ),
+
+                c.Modal(
+                    title='Add plan',
+                    body=[
+                        c.Form(
+                            form_fields=[
+                                c.FormFieldInput(
+                                    name='name',
+                                    title='Name',
+                                    required=True,
+                                ),
+                                c.FormFieldInput(
+                                    name='price',
+                                    title='Price',
+                                    html_type="number",
+                                    required=True,
+                                ),
+                                c.FormFieldInput(
+                                    name='max_tickets',
+                                    title='Max tickets',
+                                    html_type="number",
+                                    required=True,
+                                ),
+                            ],
+                            loading=[c.Spinner(text='Adding...')],
+                            submit_url=f"/api/admin-ui/events/{event.id}/plans",
+                            submit_trigger=PageEvent(name='add-form-submit'),
+                            footer=[],
+                        ),
+                    ],
+                    footer=[
+                        c.Button(
+                            text='Cancel', named_style='secondary', on_click=PageEvent(name='add-plan-form', clear=True)
+                        ),
+                        c.Button(
+                            text='Submit', on_click=PageEvent(name='add-form-submit')
+                        ),
+                    ],
+                    open_trigger=PageEvent(name='add-plan-modal'),
                 ),
             ]
         ),

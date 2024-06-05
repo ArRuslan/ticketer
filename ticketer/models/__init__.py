@@ -14,3 +14,4 @@ from .user_device import UserDevice
 
 UserPydantic = pydantic_model_creator(User, exclude=("mfa_key", "password"))
 EventPydantic = pydantic_model_creator(Event)
+EventPlanPydantic = pydantic_model_creator(EventPlan)

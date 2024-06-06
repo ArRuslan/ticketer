@@ -15,6 +15,7 @@ class EventPlan(Model):
 
     def to_json(self) -> dict:
         return {
+            "id": self.id,
             "name": self.name,
             "price": self.price,
         }

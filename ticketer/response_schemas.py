@@ -52,6 +52,7 @@ class EventData(BaseModel):
 
 
 class EventPlanData(BaseModel):
+    id: int
     name: str
     price: float
 
